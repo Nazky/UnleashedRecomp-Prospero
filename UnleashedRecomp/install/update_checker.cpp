@@ -1,6 +1,8 @@
 #include "update_checker.h"
 
+#if !defined(__PROSPERO__)
 #include <curl/curl.h>
+#endif
 #include <nlohmann/json.hpp>
 
 #include "version.h"
@@ -63,6 +65,11 @@ static bool parseVersion(const std::string &versionStr, int &major, int &minor, 
 
 void updateCheckerThread()
 {
+#if defined(__PROSPERO__)
+    g_updateCheckerResult = UpdateChecker::Result::AlreadyUpToDate;
+    g_updateCheckerFinished = true;
+    g_updateCheckerInProgress = false;
+#else
     CURL *curl = curl_easy_init();
     CURLcode res;
     int major, minor, revision;
@@ -121,11 +128,14 @@ void updateCheckerThread()
 
     g_updateCheckerFinished = true;
     g_updateCheckerInProgress = false;
+#endif
 }
 
 void UpdateChecker::initialize()
 {
+#if !defined(__PROSPERO__)
     curl_global_init(CURL_GLOBAL_DEFAULT);
+#endif
 }
 
 bool UpdateChecker::start()
@@ -169,6 +179,8 @@ void UpdateChecker::visitWebsite()
 #elif defined(__APPLE__)
     std::string command = "open " + std::string(VISIT_URL) + " &";
     std::system(command.c_str());
+#elif defined(__PROSPERO__)
+    (void)VISIT_URL;
 #else
     static_assert(false, "Visit website not implemented for this platform.");
 #endif

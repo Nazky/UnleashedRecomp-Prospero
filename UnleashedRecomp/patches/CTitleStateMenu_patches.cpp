@@ -14,6 +14,8 @@
 static bool g_installMessageOpen = false;
 static bool g_installMessageFaderBegun = false;
 static int g_installMessageResult = -1;
+static bool g_restartFaderBegun = false;
+static int g_restartMessageResult = -1;
 
 static bool ProcessInstallMessage()
 {
@@ -60,9 +62,36 @@ PPC_FUNC(sub_825882B8)
     auto isAccepted = pPadState.IsTapped(SWA::eKeyState_A) || pPadState.IsTapped(SWA::eKeyState_Start);
 
     auto pContext = pTitleStateMenu->GetContextBase<SWA::CTitleStateMenu::CTitleStateMenuContext>();
+    if (pContext && !OptionsMenu::s_isVisible && !OptionsMenu::s_isRestartRequired && !g_restartFaderBegun)
+    {
+        auto* pCtxBytes = reinterpret_cast<uint8_t*>(pContext);
+        const auto swaLang = (SWA::ELanguage)App::ToSwaLanguage(Config::Language.Value);
+        const auto swaVoiceLang = (SWA::EVoiceLanguage)Config::VoiceLanguage.Value;
+        const auto swaRegion = (Config::Language == ELanguage::Japanese)
+            ? SWA::eRegion_Japan
+            : SWA::eRegion_RestOfWorld;
+
+        *reinterpret_cast<bool*>(pCtxBytes + 0x154) = (Config::Language == ELanguage::Japanese);
+        *reinterpret_cast<be<SWA::ELanguage>*>(pCtxBytes + 0x1F8) = swaLang;
+        *reinterpret_cast<be<SWA::EVoiceLanguage>*>(pCtxBytes + 0x1FC) = swaVoiceLang;
+        *reinterpret_cast<be<SWA::ERegion>*>(pCtxBytes + 0x208) = swaRegion;
+        *reinterpret_cast<bool*>(pCtxBytes + 0x20D) = Config::Subtitles;
+
+        if (auto* pTitleMenu = pContext->m_pTitleMenu.get())
+        {
+            auto* pMenuBytes = reinterpret_cast<uint8_t*>(pTitleMenu);
+            *reinterpret_cast<be<SWA::EVoiceLanguage>*>(pMenuBytes + 0x88) = swaVoiceLang;
+            *reinterpret_cast<be<uint32_t>*>(pMenuBytes + 0x8C) = Config::Subtitles ? 0 : 1;
+        }
+    }
+
     auto isNewGameIndex = pContext->m_pTitleMenu->m_CursorIndex == 0;
     auto isOptionsIndex = pContext->m_pTitleMenu->m_CursorIndex == 2;
+#if defined(__PROSPERO__)
+    auto isInstallIndex = false;
+#else
     auto isInstallIndex = pContext->m_pTitleMenu->m_CursorIndex == 3;
+#endif
 
     // Always default to New Game with corrupted save data.
     if (App::s_isSaveDataCorrupt && pContext->m_pTitleMenu->m_CursorIndex == 1)
@@ -82,12 +111,30 @@ PPC_FUNC(sub_825882B8)
     {
         if (OptionsMenu::s_isRestartRequired)
         {
-            static int result = -1;
+            std::array<std::string, 2> options = { Localise("Common_Yes"), Localise("Common_No") };
 
-            if (MessageWindow::Open(Localise("Options_Message_Restart"), &result) == MSG_CLOSED)
-                Fader::FadeOut(1, []() { App::Restart(); });
+            if (!g_restartFaderBegun && MessageWindow::Open(Localise("Options_Message_RestartConfirm"), &g_restartMessageResult, options, 0, 1) == MSG_CLOSED)
+            {
+                const int choice = g_restartMessageResult;
+                g_restartMessageResult = -1;
+
+                if (choice == 0)
+                {
+                    OptionsMenu::CommitRestartSettings();
+                    g_restartFaderBegun = true;
+                    Fader::FadeOut(1, []()
+                    {
+                        g_restartFaderBegun = false;
+                        App::Restart();
+                    });
+                }
+                else
+                {
+                    OptionsMenu::RevertRestartSettings();
+                }
+            }
         }
-        else if (isAccepted)
+        else if (!g_restartFaderBegun && isAccepted)
         {
             Game_PlaySound("sys_worldmap_window");
             Game_PlaySound("sys_worldmap_decide");
@@ -99,7 +146,7 @@ PPC_FUNC(sub_825882B8)
         g_installMessageOpen = true;
     }
 
-    if (!OptionsMenu::s_isVisible && !OptionsMenu::s_isRestartRequired && !ProcessInstallMessage())
+    if (!OptionsMenu::s_isVisible && !OptionsMenu::s_isRestartRequired && !g_restartFaderBegun && !ProcessInstallMessage())
         __imp__sub_825882B8(ctx, base);
 
     if (isOptionsIndex)
@@ -127,5 +174,9 @@ void TitleMenuRemoveStorageDeviceOptionMidAsmHook(PPCRegister& r11)
 
 void TitleMenuAddInstallOptionMidAsmHook(PPCRegister& r3)
 {
+#if defined(__PROSPERO__)
+    r3.u32 = 0;
+#else
     r3.u32 = 1;
+#endif
 }

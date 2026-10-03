@@ -15,6 +15,8 @@ public:
     static void Draw();
     static void Open(bool isPause = false, SWA::EMenuType pauseMenuType = SWA::eMenuType_WorldMap);
     static void Close();
+    static void CommitRestartSettings();
+    static void RevertRestartSettings();
 
     static bool CanClose();
 };

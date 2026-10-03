@@ -3,6 +3,8 @@
 #include <kernel/xdm.h>
 
 // Use pthreads directly on macOS to be able to increase default stack size.
+// On PS5 (__PROSPERO__), libps5platform wraps pthread_create so std::thread
+// automatically receives a 2 MiB stack in Direct Memory with a guard page.
 #ifdef __APPLE__
 #define USE_PTHREAD 1
 #endif

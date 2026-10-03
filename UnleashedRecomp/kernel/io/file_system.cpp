@@ -7,6 +7,64 @@
 #include <os/logger.h>
 #include <user/config.h>
 #include <stdafx.h>
+#if defined(__PROSPERO__) || defined(__linux__)
+#include <unistd.h>
+#endif
+
+static std::string_view GetLanguageFolderName(ELanguage lang)
+{
+    switch (lang)
+    {
+        case ELanguage::English:  return "English";
+        case ELanguage::Japanese: return "Japanese";
+        case ELanguage::German:   return "German";
+        case ELanguage::French:   return "French";
+        case ELanguage::Spanish:  return "Spanish";
+        case ELanguage::Italian:  return "Italian";
+        default:                  return "English";
+    }
+}
+
+static std::string_view GetVoiceLanguageFolderName(EVoiceLanguage lang)
+{
+    switch (lang)
+    {
+        case EVoiceLanguage::English:  return "English";
+        case EVoiceLanguage::Japanese: return "Japanese";
+        default:                       return "English";
+    }
+}
+
+static void RewriteLanguageSegment(std::string& builtPath, std::string_view marker, std::string_view targetFolder)
+{
+    size_t pos = builtPath.find(marker);
+    if (pos == std::string::npos)
+        return;
+
+    size_t langStart = pos + marker.size();
+    size_t langEnd = builtPath.find('/', langStart);
+    if (langEnd == std::string::npos)
+        return;
+
+    std::string_view currentFolder(builtPath.data() + langStart, langEnd - langStart);
+    if (currentFolder == targetFolder)
+        return;
+
+    std::string candidate;
+    candidate.reserve(builtPath.size() + 8);
+    candidate.append(builtPath.data(), langStart);
+    candidate.append(targetFolder);
+    candidate.append(builtPath.data() + langEnd, builtPath.size() - langEnd);
+
+#if defined(__PROSPERO__) || defined(__linux__)
+    if (access(candidate.c_str(), F_OK) == 0)
+        builtPath = std::move(candidate);
+#else
+    std::error_code ec;
+    if (std::filesystem::exists(candidate, ec))
+        builtPath = std::move(candidate);
+#endif
+}
 
 struct FileHandle : KernelObject
 {
@@ -338,10 +396,11 @@ uint32_t XReadFileEx(FileHandle* hFile, void* lpBuffer, uint32_t nNumberOfBytesT
 
 uint32_t XGetFileAttributesA(const char* lpFileName)
 {
+    std::error_code ec;
     std::filesystem::path filePath = FileSystem::ResolvePath(lpFileName, true);
-    if (std::filesystem::is_directory(filePath))
+    if (std::filesystem::is_directory(filePath, ec))
         return FILE_ATTRIBUTE_DIRECTORY;
-    else if (std::filesystem::is_regular_file(filePath))
+    else if (std::filesystem::is_regular_file(filePath, ec))
         return FILE_ATTRIBUTE_NORMAL;
     else
         return INVALID_FILE_ATTRIBUTES;
@@ -410,6 +469,11 @@ std::filesystem::path FileSystem::ResolvePath(const std::string_view& path, bool
     }
 
     std::replace(builtPath.begin(), builtPath.end(), '\\', '/');
+
+    const auto targetLangFolder = GetLanguageFolderName(Config::Language.Value);
+    RewriteLanguageSegment(builtPath, "/Languages/", targetLangFolder);
+    RewriteLanguageSegment(builtPath, "/Inspire/subtitle/", targetLangFolder);
+    RewriteLanguageSegment(builtPath, "/voices/", GetVoiceLanguageFolderName(Config::VoiceLanguage.Value));
 
     return std::u8string_view((const char8_t*)builtPath.c_str());
 }

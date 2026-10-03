@@ -99,6 +99,8 @@ static bool g_isEnterKeyBuffered = false;
 static bool g_canReset = false;
 static bool g_isLanguageOptionChanged = false;
 static bool g_titleAnimBegin = true;
+static ELanguage g_initialLanguage = ELanguage::English;
+static EVoiceLanguage g_initialVoiceLanguage = EVoiceLanguage::English;
 static EChannelConfiguration g_currentChannelConfig;
 
 static double g_appearTime = 0.0;
@@ -1227,8 +1229,8 @@ static void DrawConfigOptions()
     switch (g_categoryIndex)
     {
         case 0: // SYSTEM
-            DrawConfigOption(rowCount++, yOffset, &Config::Language, !OptionsMenu::s_isPause, cmnReason);
-            DrawConfigOption(rowCount++, yOffset, &Config::VoiceLanguage, OptionsMenu::s_pauseMenuType == SWA::eMenuType_WorldMap, cmnReason);
+            DrawConfigOption(rowCount++, yOffset, &Config::Language, !isStage, cmnReason);
+            DrawConfigOption(rowCount++, yOffset, &Config::VoiceLanguage, !isStage, cmnReason);
             DrawConfigOption(rowCount++, yOffset, &Config::Subtitles, true);
             DrawConfigOption(rowCount++, yOffset, &Config::Hints, !isStage, cmnReason);
             DrawConfigOption(rowCount++, yOffset, &Config::ControlTutorial, !isStage, cmnReason);
@@ -1240,7 +1242,9 @@ static void DrawConfigOptions()
             DrawConfigOption(rowCount++, yOffset, &Config::HorizontalCamera, true);
             DrawConfigOption(rowCount++, yOffset, &Config::VerticalCamera, true);
             DrawConfigOption(rowCount++, yOffset, &Config::Vibration, true);
+#if !defined(__PROSPERO__)
             DrawConfigOption(rowCount++, yOffset, &Config::AllowBackgroundInput, true);
+#endif
             DrawConfigOption(rowCount++, yOffset, &Config::ControllerIcons, true);
             break;
 
@@ -1249,12 +1253,15 @@ static void DrawConfigOptions()
             DrawConfigOption(rowCount++, yOffset, &Config::MusicVolume, true);
             DrawConfigOption(rowCount++, yOffset, &Config::EffectsVolume, true);
             DrawConfigOption(rowCount++, yOffset, &Config::ChannelConfiguration, !OptionsMenu::s_isPause, cmnReason);
+#if !defined(__PROSPERO__)
             DrawConfigOption(rowCount++, yOffset, &Config::MusicAttenuation, AudioPatches::CanAttenuate(), &Localise("Options_Desc_OSNotSupported"));
+#endif
             DrawConfigOption(rowCount++, yOffset, &Config::BattleTheme, true);
             break;
 
         case 3: // VIDEO
         {
+#if !defined(__PROSPERO__)
             DrawConfigOption(rowCount++, yOffset, &Config::WindowSize,
                 !Config::Fullscreen, &Localise("Options_Desc_NotAvailableFullscreen"),
                 0, 0, (int32_t)GameWindow::GetDisplayModes().size() - 1, false);
@@ -1267,6 +1274,7 @@ static void DrawConfigOptions()
                 monitorReason = &Localise("Options_Desc_NotAvailableHardware");
 
             DrawConfigOption(rowCount++, yOffset, &Config::Monitor, canChangeMonitor, monitorReason, 0, 0, displayCount - 1, false);
+#endif
 
             DrawConfigOption(rowCount++, yOffset, &Config::AspectRatio, true);
             DrawConfigOption(rowCount++, yOffset, &Config::ResolutionScale, true, nullptr, 0.25f, 1.0f, 2.0f);
@@ -1652,7 +1660,8 @@ static void DrawInfoPanel(ImVec2 infoMin, ImVec2 infoMax)
 static void SetOptionsMenuVisible(bool isVisible)
 {
     OptionsMenu::s_isVisible = isVisible;
-    *SWA::SGlobals::ms_IsRenderHud = !isVisible;
+    if (isVisible || !OptionsMenu::s_isRestartRequired)
+        *SWA::SGlobals::ms_IsRenderHud = !isVisible;
 }
 
 static bool DrawMilesElectric()
@@ -1789,7 +1798,15 @@ void OptionsMenu::Draw()
             DrawFadeTransition();
     }
 
-    s_isRestartRequired = Config::Language != App::s_language || Config::ChannelConfiguration != g_currentChannelConfig;
+    if (App::s_language != Config::Language)
+    {
+        App::s_language = Config::Language;
+    }
+
+    s_isRestartRequired =
+        (Config::Language.Value != g_initialLanguage) ||
+        (Config::VoiceLanguage.Value != g_initialVoiceLanguage) ||
+        (Config::ChannelConfiguration.Value != g_currentChannelConfig);
 }
 
 void OptionsMenu::Open(bool isPause, SWA::EMenuType pauseMenuType)
@@ -1805,7 +1822,10 @@ void OptionsMenu::Open(bool isPause, SWA::EMenuType pauseMenuType)
     g_categoryAnimMax = { 0.0f, 0.0f };
     g_selectedItem = nullptr;
     g_titleAnimBegin = true;
-    g_currentChannelConfig = Config::ChannelConfiguration;
+    g_initialLanguage = Config::Language.Value;
+    g_initialVoiceLanguage = Config::VoiceLanguage.Value;
+    g_currentChannelConfig = Config::ChannelConfiguration.Value;
+    s_isRestartRequired = false;
 
     /* Store button state so we can track it later
        and prevent the first item being selected. */
@@ -1837,15 +1857,52 @@ void OptionsMenu::Close()
         g_isControlsVisible = false;
         g_isClosing = true;
 
-        ButtonGuide::Close();
-        Config::Save();
+        s_isRestartRequired =
+            (Config::Language.Value != g_initialLanguage) ||
+            (Config::VoiceLanguage.Value != g_initialVoiceLanguage) ||
+            (Config::ChannelConfiguration.Value != g_currentChannelConfig);
 
-        hid::SetProhibitedInputs();
+        App::s_language = Config::Language;
+        ButtonGuide::Close();
+
+        if (!s_isRestartRequired)
+        {
+            App::NotifyLanguageChanged();
+            Config::Save();
+            hid::SetProhibitedInputs();
+        }
     }
 
     // Skip Miles Electric animation at main menu.
     if (!g_isStage)
         SetOptionsMenuVisible(false);
+}
+
+void OptionsMenu::CommitRestartSettings()
+{
+    g_initialLanguage = Config::Language.Value;
+    g_initialVoiceLanguage = Config::VoiceLanguage.Value;
+    g_currentChannelConfig = Config::ChannelConfiguration.Value;
+    s_isRestartRequired = false;
+    s_isPause = false;
+    *SWA::SGlobals::ms_IsRenderHud = true;
+    hid::SetProhibitedInputs();
+    App::s_language = Config::Language;
+    App::NotifyLanguageChanged();
+    Config::Save();
+}
+
+void OptionsMenu::RevertRestartSettings()
+{
+    Config::Language.Value = g_initialLanguage;
+    Config::VoiceLanguage.Value = g_initialVoiceLanguage;
+    Config::ChannelConfiguration.Value = g_currentChannelConfig;
+    s_isRestartRequired = false;
+    *SWA::SGlobals::ms_IsRenderHud = true;
+    hid::SetProhibitedInputs();
+    App::s_language = Config::Language;
+    App::NotifyLanguageChanged();
+    Config::Save();
 }
 
 bool OptionsMenu::CanClose()

@@ -6,16 +6,57 @@
 #include <os/process.h>
 #include <patches/audio_patches.h>
 #include <patches/inspire_patches.h>
+#include <ui/fader.h>
 #include <ui/game_window.h>
+#include <ui/options_menu.h>
 #include <user/config.h>
 #include <user/paths.h>
 #include <user/registry.h>
+#include <atomic>
+
+static std::atomic<bool> g_pendingLanguageSync = false;
+static ELanguage g_lastAppliedLanguage = ELanguage::English;
+static EVoiceLanguage g_lastAppliedVoiceLanguage = EVoiceLanguage::English;
+
+uint32_t App::ToSwaLanguage(ELanguage lang)
+{
+    switch (lang)
+    {
+        case ELanguage::English:  return SWA::eLanguage_English;
+        case ELanguage::Japanese: return SWA::eLanguage_Japanese;
+        case ELanguage::French:   return SWA::eLanguage_French;
+        case ELanguage::German:   return SWA::eLanguage_German;
+        case ELanguage::Italian:  return SWA::eLanguage_Italian;
+        case ELanguage::Spanish:  return SWA::eLanguage_Spanish;
+        default:                  return SWA::eLanguage_English;
+    }
+}
+
+void App::NotifyLanguageChanged()
+{
+    s_language = Config::Language;
+    g_pendingLanguageSync.store(true, std::memory_order_release);
+}
 
 void App::Restart(std::vector<std::string> restartArgs)
 {
+#if defined(__PROSPERO__)
+    (void)restartArgs;
+    s_language = Config::Language;
+    NotifyLanguageChanged();
+    Config::Save();
+    Registry::Save();
+    OptionsMenu::s_isRestartRequired = false;
+    s_isSoftRebootRequested = true;
+#else
     os::process::StartProcess(os::process::GetExecutablePath(), restartArgs, os::process::GetWorkingDirectory());
     Exit();
+#endif
 }
+
+#if defined(__PROSPERO__)
+extern "C" int sceSystemServiceLoadExec(const char* path, char* const argv[]);
+#endif
 
 void App::Exit()
 {
@@ -25,7 +66,13 @@ void App::Exit()
     timeEndPeriod(1);
 #endif
 
+#if defined(__PROSPERO__)
+    sceSystemServiceLoadExec("exit", nullptr);
+    for (;;)
+        usleep(100000);
+#else
     std::_Exit(0);
+#endif
 }
 
 // SWA::CApplication::CApplication
@@ -35,6 +82,8 @@ PPC_FUNC(sub_824EB490)
     App::s_isInit = true;
     App::s_isMissingDLC = !Installer::checkAllDLC(GetGamePath());
     App::s_language = Config::Language;
+    g_lastAppliedLanguage = Config::Language.Value;
+    g_lastAppliedVoiceLanguage = Config::VoiceLanguage.Value;
 
     SWA::SGlobals::Init();
     Registry::Save();
@@ -66,7 +115,8 @@ PPC_FUNC(sub_822C1130)
     // which SDL does not like. To prevent the OS from thinking
     // the process is unresponsive, we will flush while waiting
     // for the pipelines to finish compiling in video.cpp.
-    if (std::this_thread::get_id() == g_mainThreadId)
+    const bool isMainThread = (std::this_thread::get_id() == g_mainThreadId);
+    if (isMainThread)
     {
         SDL_PumpEvents();
         SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
@@ -76,9 +126,40 @@ PPC_FUNC(sub_822C1130)
     AudioPatches::Update(App::s_deltaTime);
     InspirePatches::Update();
 
-    // Apply subtitles option.
+    // Apply subtitles and committed language/voice options.
     if (auto pApplicationDocument = SWA::CApplicationDocument::GetInstance())
+    {
         pApplicationDocument->m_InspireSubtitles = Config::Subtitles;
+
+        if (!OptionsMenu::s_isVisible && !OptionsMenu::s_isRestartRequired)
+        {
+            const auto targetLang = (SWA::ELanguage)App::ToSwaLanguage(Config::Language.Value);
+            const auto targetVoiceLang = (SWA::EVoiceLanguage)Config::VoiceLanguage.Value;
+            const auto targetRegion = (Config::Language == ELanguage::Japanese)
+                ? SWA::eRegion_Japan
+                : SWA::eRegion_RestOfWorld;
+
+            pApplicationDocument->m_Language = targetLang;
+            pApplicationDocument->m_VoiceLanguage = targetVoiceLang;
+            pApplicationDocument->m_Region = targetRegion;
+
+            if (isMainThread && !App::s_isLoading)
+            {
+                const bool langChanged = (g_lastAppliedLanguage != Config::Language.Value);
+                const bool voiceChanged = (g_lastAppliedVoiceLanguage != Config::VoiceLanguage.Value);
+                const bool pendingSync = g_pendingLanguageSync.exchange(false, std::memory_order_acq_rel);
+
+                if (pendingSync || langChanged || voiceChanged)
+                {
+                    App::s_language = Config::Language;
+                    g_lastAppliedLanguage = Config::Language.Value;
+                    g_lastAppliedVoiceLanguage = Config::VoiceLanguage.Value;
+
+                    GuestToHostFunction<void>(sub_825198C8, &pApplicationDocument->m_Language);
+                }
+            }
+        }
+    }
 
     if (Config::EnableEventCollisionDebugView)
         *SWA::SGlobals::ms_IsTriggerRender = true;
@@ -93,5 +174,19 @@ PPC_FUNC(sub_822C1130)
         *SWA::SGlobals::ms_IsCollisionRender = true;
 
     __imp__sub_822C1130(ctx, base);
+
+    if (auto pApplicationDocument = SWA::CApplicationDocument::GetInstance())
+    {
+        pApplicationDocument->m_InspireSubtitles = Config::Subtitles;
+
+        if (!OptionsMenu::s_isVisible && !OptionsMenu::s_isRestartRequired)
+        {
+            pApplicationDocument->m_Language = (SWA::ELanguage)App::ToSwaLanguage(Config::Language.Value);
+            pApplicationDocument->m_VoiceLanguage = (SWA::EVoiceLanguage)Config::VoiceLanguage.Value;
+            pApplicationDocument->m_Region = (Config::Language == ELanguage::Japanese)
+                ? SWA::eRegion_Japan
+                : SWA::eRegion_RestOfWorld;
+        }
+    }
 }
 

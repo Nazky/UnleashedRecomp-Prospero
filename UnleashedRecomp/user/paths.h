@@ -21,6 +21,28 @@ inline std::filesystem::path GetGamePath()
     // /Applications/, and the bundle should not be modified. Thus we need
     // to install game files to the user directory instead of next to the app.
     return GetUserPath();
+#elif defined(__PROSPERO__)
+    static const std::filesystem::path s_candidates[] = {
+        "/app0/ressources",
+        "/app0/resources",
+        "/app0/PPSA99902/ressources",
+        "/app0/PPSA99902/resources",
+        "/app0/PPSA99902",
+        "/app0",
+        "/data/UnleashedRecomp/ressources",
+        "/data/UnleashedRecomp/resources",
+        "/data/UnleashedRecomp",
+        "/download0/PPSA99902/ressources",
+        "/download0/PPSA99902/resources",
+        "/download0/PPSA99902",
+    };
+    for (const auto& candidate : s_candidates)
+    {
+        std::error_code ec;
+        if (std::filesystem::exists(candidate / "game", ec))
+            return candidate;
+    }
+    return "/app0/ressources";
 #else
     return GAME_INSTALL_DIRECTORY;
 #endif

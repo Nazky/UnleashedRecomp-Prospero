@@ -1,1 +1,1 @@
-*.hlsl.*.h
+# Precompiled HLSL->SPIR-V/DXIL/MSL headers are tracked for PS5 cross-compilation

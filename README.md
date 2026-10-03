@@ -1,480 +1,291 @@
-<p align="center">
-    <img src="https://raw.githubusercontent.com/hedge-dev/UnleashedRecompResources/refs/heads/main/images/logo/Logo.png" width="512"/>
-</p>
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/hedge-dev/UnleashedRecompResources/refs/heads/main/images/logo/Logo.png" width="512" alt="Unleashed Recompiled Logo" />
+
+# UnleashedRecomp-Prospero
+
+**Native PlayStation 5 Port of [Sonic Unleashed Recompiled](https://github.com/hedge-dev/UnleashedRecomp)**
+
+[![Platform](https://img.shields.io/badge/Platform-PlayStation%205-003791?style=for-the-badge&logo=playstation&logoColor=white)](https://github.com/Nazky/UnleashedRecomp-Prospero)
+[![Branch](https://img.shields.io/badge/Branch-prospero-6e5494?style=for-the-badge&logo=git&logoColor=white)](https://github.com/Nazky/UnleashedRecomp-Prospero/tree/prospero)
+[![Title ID](https://img.shields.io/badge/Title%20ID-PPSA99902-0070D1?style=for-the-badge)](https://github.com/Nazky/UnleashedRecomp-Prospero)
+[![Renderer](https://img.shields.io/badge/Vulkan-plume--ps5%20%2B%20RADV-AC162C?style=for-the-badge&logo=vulkan&logoColor=white)](https://github.com/Nazky/plume-ps5/tree/prospero)
+[![License](https://img.shields.io/badge/License-GPL--3.0-2ea44f?style=for-the-badge)](LICENSE.md)
+
+[**Overview**](#-overview) •
+[**PS5 Features**](#-playstation-5-features--enhancements) •
+[**Known Issues**](#️-known-issues) •
+[**TODO / Roadmap**](#-roadmap--todo) •
+[**Build & Package**](#-building-from-source-linux-x86_64) •
+[**Deploy to PS5**](#-deploying--running-on-playstation-5) •
+[**Custom Assets**](#-customizing-ps5-home-screen-assets--audio) •
+[**Architecture**](#-engineering--architecture-deep-dive) •
+[**Credits**](#-credits--acknowledgments)
+
+</div>
 
 ---
 
-Unleashed Recompiled is an unofficial PC port of the Xbox 360 version of Sonic Unleashed created through the process of static recompilation. The port offers Windows and Linux support with numerous built-in enhancements such as high resolutions, ultrawide support, high frame rates, improved performance and modding.
-
-**This project does not include any game assets. You must provide the files from your own legally acquired copy of the game to install or build Unleashed Recompiled.**
-
-[Check out the latest release here](https://github.com/hedge-dev/UnleashedRecomp/releases/latest).
-
-[XenonRecomp](https://github.com/hedge-dev/XenonRecomp) and [XenosRecomp](https://github.com/hedge-dev/XenosRecomp) are the main recompilers used for converting the game's original PowerPC code and Xenos shaders into compatible C++ and HLSL code respectively. The development of these recompilers was directly inspired by [N64: Recompiled](https://github.com/N64Recomp/N64Recomp), which was used to create [Zelda 64: Recompiled](https://github.com/Zelda64Recomp/Zelda64Recomp).
-
-## Table of Contents
-
-- [Minimum System Requirements](#minimum-system-requirements)
-- [How to Install](#how-to-install)
-- [Features](#features)
-- [Update Roadmap](#update-roadmap)
-- [Known Issues](#known-issues)
-- [FAQ](#faq)
-- [Building](#building)
-- [Credits](#credits)
-
-## Minimum System Requirements
-
-- CPU with support for the AVX instruction set:
-  - Intel: Sandy Bridge (Intel Core 2nd Generation)
-  - AMD: Bulldozer (AMD FX series)
-- GPU with support for Direct3D 12.0 (Shader Model 6) or Vulkan 1.2:
-  - NVIDIA: GeForce GT 630 (Kepler)
-  - AMD: Radeon HD 7750 (2012, not the RX 7000)
-  - Intel: HD Graphics 510 (Skylake)
-- Memory:
-  - 8 GB minimum
-- Operating System:
-  - Windows 10 (version 1909)
-  - A modern Linux distro such as Ubuntu 22.04 LTS
-- Storage:
-  - With DLC: 10 GiB required
-  - Without DLC: 6 GiB required
-
-> [!NOTE]
-> More storage space may be required if uncompressed game files are provided during installation.
-
-## How to Install
-
-1) You must have access to the following:
-
-    - Xbox 360 (modifications not necessary)
-    - Xbox 360 Storage Device (either an Xbox 360 hard drive or an external USB storage device)
-    - Xbox 360 Hard Drive Transfer Cable or a compatible SATA to USB adapter (only required for dumping from an Xbox 360 hard drive)
-    - Sonic Unleashed for Xbox 360 (US or EU, **JP is not supported**)
-        - Retail Disc or Digital Copy (can be purchased and downloaded from the [Xbox Store](https://www.xbox.com/en-US/games/store/sonic-unleashed/c098fgnmts8f)).
-        - Title Update required.
-        - All available DLC (Adventure Packs) are optional, but **highly recommended**. **The DLC includes high quality lighting for the entire game**.
-
-> [!TIP]
-> If you do not have the Xbox 360 Hard Drive Transfer Cable, please ensure that you purchase the correct revision of it for your console.
+> [!WARNING]
+> **Unofficial PlayStation 5 Fork — Not Intended for Upstream Merge**
 >
-> The latest revision works with both original Xbox 360 and Xbox 360 S|E hard drives, but the first revision only works with original Xbox 360 hard drives.
+> **UnleashedRecomp-Prospero** ([`Nazky/UnleashedRecomp-Prospero`](https://github.com/Nazky/UnleashedRecomp-Prospero), branch `prospero`) is an independent, community-maintained fork created specifically to port *Unleashed Recompiled* to the **PlayStation 5 (`__PROSPERO__`)**.
 >
-> To know which is which, the first revision cable is gray, whereas the latest revision (which supports any Xbox 360 hard drive) is black.
-
-2) **Before proceeding with the installation**, make sure to follow the guide on how to acquire the game files from your Xbox 360.
-
-    - Xbox 360 Hard Drive Dumping Guide
-        - [English](/docs/DUMPING-en.md)
-    - Xbox 360 USB Dumping Guide
-        - [English](/docs/DUMPING-USB-en.md)
-
-3) Download [the latest release](https://github.com/hedge-dev/UnleashedRecomp/releases/latest) of Unleashed Recompiled and extract it to where you'd like the game to be installed.
-
-4) Run the executable and you will be guided through the installation process. You will be asked to provide the files you acquired in the previous step. When presented with options for how to do this:
-
-    - **Add Files** will only allow you to provide **containers or images dumped from an Xbox 360**. These often come in the form of very large files without associated extensions. Don't worry if you're not aware of what's inside of them, the installer will automatically detect what type of content is inside the container.
-
-    - **Add Folder** will only allow you to provide a **directory with the game's raw files** corresponding to the piece of content that is requested. **It will NOT scan your folder for compatible content!**
-
-> [!NOTE]
-> Please note that it is **not possible** to complete the installation if your files have been **modified**. In case of other problems such as black screens or crashes, **do not try to reinstall the game** as it is not possible for the process to result in an invalid installation.
-
-## Features
-
-### Easy to Use Installer
-
-A built-in installation wizard will guide you through the process of installing the game with many integrity checks to ensure the process goes as smoothly as possible. The installer can also be accessed from the title screen, if you wish to add the DLC at a later time.
-
-### Options Menu
-
-A completely new options menu accessible from the title screen or pause menu, with an unprecedented level of fidelity to the game's design language. Get access to many quality of life features and graphics options directly within the game with full controller navigation.
-
-### Achievements
-
-You will be rewarded with achievements as you progress through the game just like on its original platform. Achievements are recreated with integrated notifications and a new menu also very faithful to the game's design language. Get all of them and you will be rewarded with a gold trophy!
-
-> [!NOTE]
-> Achievements cannot be used with platforms such as Steam or RetroAchievements.
-
-### Custom Localization
-
-All of the new menus in the port fully support localization for each of the game's originally supported languages; English, Japanese, German, French, Spanish and Italian. As a bonus, switching the game to Japanese also changes the title screen logo to its original Japanese counterpart.
-
-### High Fidelity
-
-Special care and attention was taken to recreate the game's visuals as accurately as possible and was always compared to the game running on the original hardware. The colors are as vibrant as those of the PlayStation 3 version, which did not use the color correction filter present in the Xbox 360 version, as was originally intended. Nevertheless, an option to recreate the original warm filter from the Xbox 360 version has been included as an option.
-
-### High Resolution Enhancements
-
-Many improvements have been provided to accompany support for higher resolutions:
-
-- Multisample Anti-Aliasing (MSAA) levels beyond the 2x used by the original game.
-- Higher quality Depth of Field (DoF), an effect which commonly breaks in emulators when increasing the game's resolution. The original effect's formula was reverse-engineered and versions with 5x5, 7x7 and 9x9 taps were added based on the target resolution.
-- An "Enhanced" Motion Blur option which uses more samples than the original for a smoother blur.
-- Support for "Alpha to Coverage" Anti-Aliasing to enhance the visual result of transparent textures with hard edges.
-- A Bicubic Texture Filtering option which greatly enhances the visual result of Global Illumination textures.
-- A more precise implementation of the game's reverse Z technique, eliminating most Z-fighting issues and fixing the jittery motion blur in stages like Jungle Joyride.
-
-### High Performance Renderer
-
-A new renderer was written from scratch to translate the game's draw calls to modern APIs in a highly efficient way while also taking advantage of multi-threading.
-
-As emulation of the Xbox 360's GPU is not required in a recompilation, many decisions were made to skip quirks of the original hardware that are not required in a PC port, resulting in great improvements to performance.
-
-Modern rendering techniques such as bindless textures and shader specialization are also used to maximize the performance on systems with modern hardware whilst also supporting a wide range of lower end hardware.
-
-Multiple optimizations were made to the game's shadow map rendering and special techniques were developed to automatically detect and skip unnecessary texture copies that are no longer needed in modern APIs.
-
-Additionally, to support the game's extensive use of asset streaming, parallel transfer queues are leveraged, a feature only available in modern APIs that enable efficient use of available PCI-E bandwidth.
-
-### High Frame Rate Support
-
-The game's frame rate cap has been increased by default to 60 FPS, with support for higher targets and unlocked frame rate being available from the options menu. A vast amount of glitches that usually occur at higher frame rates have been fixed and are included as part of the recompilation.
-
-> [!NOTE]
-> While the game is considered to be beatable at frame rates higher than 60 FPS, please note that [some issues](#high-frame-rate-glitches) can still occur. Some of these issues may be addressed in future updates.
-
-### Ultrawide Support
-
-Aspect ratios for ultrawide displays (such as 21:9 or even wider) are supported out of the box, with options to adjust the alignment of the UI to the edges or to the original 16:9 safe area, if desired. No external codes are required!
-
-> [!NOTE]
-> By default, cutscenes are locked to their original aspect ratio to prevent [presentation issues](#ultrawide-visual-issues), as the game was not designed to present these scenes with wider aspect ratios. However, you can use the included option to unlock this feature if you don't mind these issues.
-
-### Extended Controller Features
-
-Support for the D-Pad has been added to various parts of the game, allowing the full game to be completed using it over the analog stick, if you so desire.
-
-If you have a DualShock 4 or DualSense controller, the LED will dynamically change color depending on the game context and support for the touchpad has been added to the World Map, allowing you to spin the planet freely!
-
-> [!NOTE]
-> LED and touchpad support for the DualShock 4 and DualSense controllers may be limited when using third-party input translation layers (such as DS4Windows or Steam Input).
->
-> Support for both features may also be limited on Linux.
-
-### Low Input Latency
-
-Modern input latency reduction techniques are included to improve the game's responsiveness as much as possible, such as support for [Waitable Swap Chains](https://learn.microsoft.com/en-us/windows/uwp/gaming/reduce-latency-with-dxgi-1-3-swap-chains) in both D3D12 and Vulkan. This methodology was applied directly before the game's input polling to minimize latency. Additionally, the D3D12 backend also supports [Flip Models](https://devblogs.microsoft.com/directx/dxgi-flip-model/), allowing the game to directly present to the screen as quickly as possible.
-
-### Asynchronous Shader Compilation
-
-One of the biggest improvements that the recompilation features over emulators is the fact that Pipeline Compilation (commonly known as "Shader Compilation") is directly integrated into the game as part of the asset loading process. This means there's **no stutters during gameplay the first time new objects or effects appear**.
-
-The renderer will traverse the game's rendering structures and automatically determine what pipelines must be compiled before it considers the asset is loaded. As a result, pipeline compilation is performed in parallel as part of the game's background workers that take care of streaming in the assets, either during regular gameplay or as part of the game's loading screens. This is an improvement that'd never be possible with an emulator, as it requires direct modification of the game to implement this feature.
-
-While this system is very extensive, some special shaders such as post-processing effects or 2D elements are not detected ahead of time, so a list of pre-determined pipelines are compiled during the game's boot sequence. However, the amount is so low that this is done completely in the background and it was determined that there was no need to show a shader compilation screen on most systems that were tested.
-
-> [!NOTE]
-> While stutters from shader compilation are non-existent, please be aware that [some stutters](#unavoidable-stutters) may be encountered due to the way the game was programmed. If you encounter these, please keep in mind that **these are not related to shader compilation**. Some of these issues may be addressed in future updates.
-
-### Support for Xbox and PlayStation Controller Icons
-
-You can freely choose whether to use Xbox 360 or PlayStation 3 controller icons. By default, the game will automatically detect which to use based on your controller, but you can select a different option based on your personal preference from within the options menu.
-
-Game objects that display controller icons such as Reaction Plates or Jump Selectors will automatically switch their textures to match the option in use. Even small details such as the Tornado Defense missions using different colors for the missiles have been accounted for.
-
-### Quality of Life Options
-
-Many options have been integrated to address some common quality of life improvements that were deemed to be essential to the port:
-
-- Hint rings and other types of hints provided by the game during exploration or boss fights can be disabled.
-- Control tutorials (as referred to by current Sonic games) can be disabled to remove button prompts that show up during gameplay to teach the player how to use certain moves.
-- The Werehog's Battle Theme, commonly considered to be an annoyance in the original game due to its frequency and interruption of the stage's background music, can now be disabled.
-- The day/night transformation cutscene in towns can use either the Xbox 360 or PlayStation 3 version, with the Xbox version artificially extending loading times for the full video play out, whilst the PlayStation version ends as soon as it's done loading.
-- Music Attenuation is a feature that was originally present in the Xbox 360 version of the game, where it'd automatically mute the background music if the console's media player was in use. This feature has been implemented using information provided by the [Windows Media Control](https://learn.microsoft.com/en-us/uwp/api/windows.media.control?view=winrt-26100) APIs in [WinRT](https://en.wikipedia.org/wiki/Windows_Runtime). Applications that interface with Windows 10/11 to display media controls are supported.
-
-> [!TIP]
-> You may refer to Music Presence's [list of supported media players](https://github.com/ungive/discord-music-presence/blob/master/documentation/supported-media-players.md) for players that work with Music Attenuation out of the box.
-
-> [!NOTE]
-> Please note that Music Attenuation is not currently available on Linux. Support for this feature may be added in a future update.
-
-### Steam Deck Support
-
-Native Linux builds that work on the Steam Deck out of the box are available. The Flatpak version can be installed directly and added as a non-Steam game easily via Desktop Mode.
-
-Be aware that installing the game on a Steam Deck can be a slow process and can easily consume the Deck's storage on the 64 GB model, so make sure you provide the game's files via external storage, such as a microSD card or a network share if possible.
-
-Performance has been found to improve significantly when the Deck's GPU clock is manually set to its maximum value via Gamescope, even if the game appears to be primarily CPU bottlenecked. Be aware that maintaining the target frame rate may be difficult during demanding sections, such as Werehog combat or DLC stages. Overall, performance is considered to be noticeably better than on the original hardware while using the default settings.
-
-> [!NOTE]
-> It is recommended to perform the installation process while in Desktop Mode, as the [file picker may not be available in Game Mode](#file-picker-unavailable-on-steam-deck-in-game-mode) at all times.
-
-### Mod Support
-
-The game includes a mod loader compatible with [Hedge Mod Manager](https://github.com/thesupersonic16/HedgeModManager). As an option, users looking for Linux support should try the development version of [HMM 8](https://github.com/hedge-dev/HedgeModManager), which should work out of the box on platforms such as the Steam Deck.
-
-The mod format uses the same standard as the one used by Sonic Generations mods. Mods that were originally created for [Unleashed Mod Manager](https://github.com/hyperbx/Unleashed-Mod-Manager) are also supported for the sake of backwards compatibility. However, using this mod format is not recommended in the long term and should now be considered deprecated.
-
-Modded files for the Xbox 360 version of the game are compatible with Unleashed Recompiled. However, some mods may have targeted a version of the game that doesn't contain the title update, so those may have issues and require updates from their authors in order to work with the recompilation. Mods that replace the game's executable file (`default.xex`) or shaders are not supported.
-
-> [!NOTE]
-> Code modding is currently not possible and is [planned for a future update](#code-modding). As a workaround for the time being, some codes have been directly embedded into the game and can be accessed through Hedge Mod Manager's Codes tab.
->
-> For information on the mod format, check out Hedge Mod Manager's [Basic Mod File Structure](https://github.com/thesupersonic16/HedgeModManager/wiki/Basic-Mod-File-Structure) wiki page.
-
-## Update Roadmap
-
-A number of different features are planned for future updates.
-
-### Action Remapping
-
-Options for changing the bindings of the player actions to the controller buttons, as well as support for keyboard bindings. In the meantime, refer to this [question in the FAQ](#what-are-the-keyboard-bindings) for the default keyboard bindings, as well as where to edit them if necessary.
-
-### More Linux Builds
-
-Linux builds that don't require Flatpak will be added in the future when a way to [create the shortcuts required for HedgeModManager](https://github.com/hedge-dev/UnleashedRecomp/issues/451) is implemented. In the meantime, you can access these builds through the [Actions](https://github.com/hedge-dev/UnleashedRecomp/actions) panel or [build them yourself](#building).
-
-### High Frame Rate Fixes
-
-A number of [gameplay issues](#high-frame-rate-glitches) are currently present that will gradually be fixed as more research into how the game works is done. At the moment, the game is considered to be beatable at high frame rates, but you may be required to limit the game to 60 FPS in order to clear some optional content.
-
-### Code Modding
-
-Modifying the code of a recompilation is a fundamentally different process than doing it for a game that only supports one platform on a single executable version. Everyone can build and fork Unleashed Recompiled on their own, which makes the method of targeting a single executable essentially impossible.
-
-A convenient and maintainable method for code modding is under research and will come in a future update, which will work consistently across all the platforms that Unleashed Recompiled currently supports.
-
-In the meantime, those interested in doing extensive code modding are recommended to fork the repository and introduce their changes in preparation for the code modding update.
-
-### Stance on New Features
-
-The team behind Unleashed Recompiled is committed to preserving the game's original design as best as possible. Additional features that don't fit the vision of the project will be left to mods or forks to cover. As such, requests for such features will not be considered. If you request a new feature, make sure it makes sense within the design of the original game and fits the goal of delivering a PC version of the game.
-
-## Known Issues
-
-### Unavoidable Stutters
-
-While Unleashed Recompiled does its best effort on fixing any hitches and stutters that could originate from the translation process, some problems are not possible to fix due to the way the game was built.
-
-Even if the recompilation process introduces a small overhead, the game does not perform some tasks in an asynchronous way. These stutters exist on original hardware, but are much more noticeable when targeting higher frame rates.
-
-Most of the known stutters are related to the game loading in layers of new objects at certain points in stages, spawning in particle systems or playing multiple sound effects. These operations can produce pauses that can last almost 10 milliseconds, even on powerful hardware. These hitches are much easier to notice when targeting frame rates such as 120 FPS, where one frame only lasts around 8 milliseconds.
-
-These problems are not possible to mitigate without further research into how the game works and will remain a goal for future updates to fix if possible. However, [as mentioned in the FAQ](#how-can-i-improve-performance), it's been found that these stutters can be significantly mitigated by playing on Linux, possibly due to the amount of synchronization primitives used by the game when these operations are performed.
-
-### High Frame Rate Glitches
-
-Sonic Unleashed is not a game that runs at a fixed rate on any of its target platforms. While it does target 30 FPS on Xbox 360 and is uncapped on PlayStation 3, it doesn't exactly hit these targets often depending on the area, and if it does, the time step itself is subject to large deviations. The game's programming simply follows the time step as closely as possible, which means inconsistencies in the time step are impossible to reproduce without targeting one exact piece of hardware.
-
-A lot of the bugs present in the game can largely be explained by sudden spikes in frame times. To make matters worse, some bugs were found to be present only if the frame rate is too stable, such as this [infamous bug](https://github.com/hedge-dev/UnleashedRecomp/issues/100) that shows up in the Wii version of the game because the cutscene was recorded with a fixed time step.
-
-Unleashed Recompiled features a vast amount of fixes for issues that present themselves when targeting high frame rates, but fixing *all of them* is too big of a task without more knowledge of how the game works. It is possible that these issues will be fixed in the future or that alternative solutions such as transform interpolation are implemented instead.
-
-If you encounter game breaking bugs or unplayable sections, try temporarily limiting the frame rate to resolve them. Also, check the [Issues](https://github.com/hedge-dev/UnleashedRecomp/issues) page for any existing reports.
-
-### Ultrawide Visual Issues
-
-Visual oddities may occur when unlocking the aspect ratio during cutscenes, as the game was not designed for wider formats. Adjusting these scenes can be subjective, so it will be up to mods to address these issues, as they require modifying the game's animations and object placement within cutscene files.
-
-### Original Game Bugs
-
-Game bugs present on the original hardware are intentionally preserved and will not be fixed. Please do not report issues for these bugs and verify that the issue does not occur on original hardware before reporting. Bug reports for issues found in the original game will be rejected. Bugs that only happen in Unleashed Recompiled must be accompanied by footage captured on original Xbox 360 hardware showing that the bug does not happen there.
-
-### File Picker Unavailable on Steam Deck in Game Mode
-
-Due to some restrictions of how the desktop environment on the Steam Deck works whilst in Game Mode, please note that you may need to at least first boot into Desktop Mode to be able to use the file picker to provide the game files.
-
-Simply booting at least once in Desktop Mode will enable the Deck to use the file picker when going back to Game Mode. You can complete the entire installation process while in Desktop Mode to save yourself the trouble of browsing through Game Mode if necessary.
-
-## FAQ
-
-### Do you have a website or Discord server?
-
-Unleashed Recompiled does not have an official website, nor is it affiliated with any Discord servers.
-
-**Please link here when directing anyone to the project.**
-
-> [!CAUTION]
-> Do not download builds of Unleashed Recompiled from anywhere but our [Releases](https://github.com/hedge-dev/UnleashedRecomp/releases/latest) page.
->
-> **We will never distribute builds on other websites, via Discord servers or via third-party update tools.**
-
-### Why does the installer say my files are invalid?
-
-The installer may display this error for several reasons. Please check the following to ensure your files are valid:
-
-- Please read the [How to Install](#how-to-install) section and make sure you've acquired all of the necessary files correctly.
-
-- Verify that you're not trying to add compressed files such as `.zip`, `.7z`, `.rar` or other formats.
-
-- Only use the **Add Folder** option if you're sure you have a directory with the content's files already extracted, which means it'll only contain files like `.xex`, `.ar.00`, `.arl` and others. **This option will not scan your folder for compatible content**.
-
-- Ensure that the files you've acquired correspond to the same region. **Discs and Title Updates from different regions can't be used together** and will fail to generate a patch.
-
-- The installer will only accept **original and unmodified files**. Do not attempt to provide modified files to the installer.
-
-### What are the keyboard bindings?
-
-Pad|Key
--|-
-A (Cross)|S
-B (Circle)|D
-X (Square)|A
-Y (Triangle)|W
-D-Pad - Up|Unbound
-D-Pad - Down|Unbound
-D-Pad - Left|Unbound
-D-Pad - Right|Unbound
-Start|Return
-Back (Select)|Backspace
-Left Trigger (L2)|1
-Right Trigger (R2)|3
-Left Bumper (L1)|Q
-Right Bumper (R1)|E
-Left Stick - Up|Up Arrow
-Left Stick - Down|Down Arrow
-Left Stick - Left|Left Arrow
-Left Stick - Right|Right Arrow
-Right Stick - Up|Unbound
-Right Stick - Down|Unbound
-Right Stick - Left|Unbound
-Right Stick - Right|Unbound
+> - **This repository is NOT meant to be merged into the official [hedge-dev/UnleashedRecomp](https://github.com/hedge-dev/UnleashedRecomp) project.**
+> - **Do NOT report issues, crashes, or support requests from this PlayStation 5 fork to the official `hedge-dev/UnleashedRecomp` repository.**
+> - **No copyrighted game assets, executables, or Xbox 360 files are included in this repository.** You must provide your own legally acquired Xbox 360 copy of *Sonic Unleashed* (US or EU retail release + Title Update) to recompile and build this project.
 
 ---
 
-You can change the keyboard bindings by editing `config.toml` located in the [configuration directory](#where-is-the-save-data-and-configuration-file-stored), although using a controller is highly recommended until [Action Remapping](#action-remapping) is added in a future update.
+## ⚡ Overview
 
-Refer to the left column of [this enum template](https://github.com/hedge-dev/UnleashedRecomp/blob/main/UnleashedRecomp/user/config.cpp#L40) for a list of valid keys.
+**UnleashedRecomp-Prospero** brings the static Xbox 360 recompilation of *Sonic Unleashed* natively to the **PlayStation 5 (`x86_64-sie-ps5` / `__PROSPERO__`)** as a self-contained homebrew BigApp title (`PPSA99902`).
 
-*The default keyboard layout is based on Devil's Details' keyboard layout for Sonic Generations (2011)*.
+By combining [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) (PowerPC-to-C++ static recompilation) and [XenosRecomp](https://github.com/hedge-dev/XenosRecomp) (Xbox 360 Xenos shader-to-SPIR-V transpilation) with **[plume-ps5](https://github.com/Nazky/plume-ps5)** (`prospero` branch), **[PS5_Mesa](https://github.com/mihawk-99/PS5_Mesa)** (`libvulkan_radeon.ps5.a`), and **[PS5_PayloadSDK](https://github.com/ps5-payload-dev/sdk)**, the entire game engine runs natively on the PS5's AMD Zen 2 CPU and Oberon RDNA 2 GPU at up to **4K (`3840x2160`)** and high frame rates.
 
-### Where is the save data and configuration file stored?
+---
 
-The save data and configuration files are stored at the following locations:
+## 🎮 PlayStation 5 Features & Enhancements
 
-- Windows: `%APPDATA%\UnleashedRecomp\`
-- Linux: `~/.config/UnleashedRecomp/`
+| Feature | Description |
+| :--- | :--- |
+| **Native 4K Vulkan Rendering** | Powered by [`Nazky/plume-ps5`](https://github.com/Nazky/plume-ps5) (`VK_KHR_display`) and [`PS5_Mesa`](https://github.com/mihawk-99/PS5_Mesa)'s static RADV driver (`libvulkan_radeon.ps5.a`), outputting directly to PS5 `SceVideoOut` at `3840x2160`. |
+| **Zero-Wizard `ressources/` Auto-Detection** | Place your extracted Xbox 360 `game`, `update`, and optional `dlc` folders inside `ressources/` — `make` automatically recompiles the XEX & shaders, and the PS5 runtime bypasses the desktop Install Wizard on boot. |
+| **Auto-Detected PS5 System Language** | Queries `sceSystemServiceParamGetInt(SCE_SYSTEM_SERVICE_PARAM_ID_LANG)` on first boot to automatically configure the game in English, Japanese, German, French, Spanish, or Italian. |
+| **In-Process Soft Reboot & Language Prompt** | Changing a restart-requiring setting (`Language`, `Voice Language`, or `Channel Configuration`) in the Options menu displays a confirmation popup in the newly selected language on exit: confirming performs an instant **in-process soft reboot** without closing the PS5 app, while cancelling reverts the setting and returns to the menu. |
+| **Console-Tailored Options & UI** | Hides desktop-only settings (`Window Size`, `Monitor`, `Music Attenuation`, `Allow Background Input`, and the Title Menu `Install` entry), sets PS5-optimized defaults (`Fullscreen = true`, `ControllerIcons = PlayStation`, `AchievementNotifications = true`), and saves user data to `/app0/user`. |
+| **Native DualSense (`scePad`) + Touchpad** | Polls the DualSense controller directly via `scePadReadState` (with automatic `scePadGetHandle` fallback) and supports navigating the World Map globe using the DualSense touchpad. |
+| **Zero-Latency 48 kHz `sceAudioOut`** | Streams 256-sample stereo audio frames directly to Sony's `sceAudioOut` hardware API at `48000 Hz`, matching Xbox 360 XAudio's native 256-sample grain without resampling latency. |
+| **Built-In Linux PS5 Asset Pipeline** | Includes native Linux converters for **4K `BC7_UNORM` DX10 DDS** backgrounds (`tools/png_to_bc7_dds`) and **looped 48 kHz ATRAC9** audio (`tools/wav_to_at9`) — no Windows tools required. |
 
-You will find the save data under the `save` folder (or `mlsave`, if using Hedge Mod Manager's save file redirection). The configuration file is named `config.toml`.
+---
 
-### I want to update the game. How can I avoid losing my save data? Do I need to reinstall the game?
+## ⚠️ Known Issues
 
-Updating the game can be done by simply copying and replacing the files from a [release](https://github.com/hedge-dev/UnleashedRecomp/releases) on top of your existing installation. **Your save data and configuration will not be lost.** You won't need to reinstall the game, as the game files will always remain the same across versions of Unleashed Recompiled.
+- **Game Crash / Freeze During Reboot (Language Change)**: Changing the game language triggers a game reboot; because a PS5 homebrew BigApp cannot self-respawn its process like on desktop, attempting to change the language and reboot in-game can cause the game to crash or freeze, requiring you to close and relaunch the application manually (the new language setting is still saved for the next launch).
+- **Temporary FPS Drops in Heavy Scenes**: The game runs at **4K 60 FPS** in most areas, but scenes with heavy particle effects and many NPCs can cause temporary frame rate drops for a few seconds. **Workaround**: Lower graphics settings such as *Resolution Scale*, *Shadow Resolution*, or *Anti-Aliasing* in the Options menu.
+- **Input Lag**: A slight amount of controller input latency can be felt on PS5. There is currently no complete fix for this yet.
 
-### How can I force the game to store the save data and configuration in the installation folder?
+---
 
-You can make the game ignore the [default configuration paths](#where-is-the-save-data-and-configuration-file-stored) and force it to save everything in the installation directory by creating an empty `portable.txt` file. You are directly responsible for the safekeeping of your save data and configuration if you choose this option.
+## 🗺️ Roadmap & TODO
 
-### How can I install mods?
+- [ ] **Fix In-Game Reboot / Language Switching**: Resolve the crash/freeze when rebooting the game after changing language or restart-requiring settings.
+- [ ] **Native PlayStation 5 Trophies**: Replace the built-in *Unleashed Recompiled* achievement system with native PlayStation 5 system trophies.
+- [ ] **Additional PlayStation 5 Features**: Explore and integrate more PS5-specific features (DualSense haptics/adaptive triggers, system integration, and further performance/latency optimizations).
 
-**Do not install mods by modifying the game data**. Use [Hedge Mod Manager](https://github.com/thesupersonic16/HedgeModManager) instead. You will not get support for modifying your game files directly.
+---
 
-> [!WARNING]
-> Unleashed Mod Manager is not recommended for use with Unleashed Recompiled, as it can make permanent changes to your game files.
+## 🚀 Building from Source (Linux x86_64)
 
-### How can I force the game to run the installation again?
+### 1. Host Prerequisites
 
-While it's unlikely you'll need to do this unless you've modified your game files by accident, you can force the installer to run again by using the launch argument: `--install`.
+Works out of the box on modern x86_64 Linux distributions (**Ubuntu / Debian**, **Fedora**, **Arch Linux**, etc.):
 
-### How can I force the game to run under X11 or Wayland?
+- **Compilers & Toolchain**: `clang` & `lld` (`18+`), `gcc` & `g++`, `llvm` (`llvm-ar`, `llvm-nm`, `llvm-objcopy`), `cmake`, `meson`, `ninja`, `pkg-config`, `make`
+- **Libraries & Utilities**: `sdl2-devel` / `libsdl2-dev`, `python3` (`python3-mako`, `python3-yaml`), `git`, `curl`, `xz`, `tar`, `rsync`
 
-Use either of the following arguments to force SDL to run under the video driver you want:
+### 2. Clone the `prospero` Branch
 
-- X11: `--sdl-video-driver x11`
-- Wayland: `--sdl-video-driver wayland`
+```bash
+git clone -b prospero https://github.com/Nazky/UnleashedRecomp-Prospero.git
+cd UnleashedRecomp-Prospero
+```
 
-The second argument will be passed directly to SDL as a hint to try to initialize the game with your preferred option.
+### 3. Populate `ressources/` with Your Retail Xbox 360 Files
 
-### Where is the game data for the Flatpak version installed?
+Place your extracted, unmodified Xbox 360 *Sonic Unleashed* (US or EU) files into the `ressources/` directory:
 
-Given it is not possible to run the game where the Flatpak is stored, the game data will be installed to `~/.var/app/io.github.hedge_dev.unleashedrecomp/data`. The Flatpak build will only recognize this directory as valid. Feel free to reuse this data directory with a native Linux build if you wish to switch in the future.
+```text
+UnleashedRecomp-Prospero/
+└── ressources/
+    ├── game/       # Extracted Xbox 360 base game files (must include default.xex, shader.ar or #shader.ar.00, etc.)
+    ├── update/     # Extracted Xbox 360 Title Update files (must include default.xexp, etc.)
+    └── dlc/        # (Optional) Extracted Xbox 360 Adventure Pack DLC folders
+```
 
-If you wish to move this data to another location, you can do so by creating a symlink from this directory to the one where you'll migrate your installation to.
+### 4. Run `make`
 
-### How can I improve performance?
+```bash
+make
+```
 
-You can lower the values of some of the following graphics options to improve performance. Other options may help, but these usually have the biggest impact:
+Running `make` executes the entire end-to-end PlayStation 5 build pipeline automatically:
 
-- Resolution Scale
-- Anti-Aliasing
-- Shadow Resolution
+1. **PS5 `sce_sys/` Asset Preparation (`tools/prepare-assets.sh`)**:
+   - Compiles the native Linux `png_to_bc7_dds` and `wav_to_at9` converters and validates/generates `sce_sys/icon0.png`, `sce_sys/pic0.dds`, `sce_sys/pic1.dds`, and `sce_sys/snd0.at9`.
+2. **Host Recompiler Tools (`tools/build-host-tools.sh`)**:
+   - Compiles native Linux host binaries for `XenonRecomp`, `XenosRecomp` (with `-DUNLEASHED_RECOMP`), `x_decompress`, `file_to_c`, and `ps5-native-tool` into `tools/bin/`.
+3. **Xbox 360 XEX & Xenos Shader Recompilation (`tools/recomp-xex.sh`)**:
+   - Patches `default.xex` + `default.xexp` into `ressources/patched/default.xex` and generates **261 PowerPC-to-C++ source files** (`UnleashedRecompLib/ppc/ppc_recomp.0.cpp` .. `ppc_recomp.260.cpp`).
+   - Decompresses `shader.ar` via `x_decompress` and runs `XenosRecomp` to transpile all Xbox 360 Xenos shaders into SPIR-V/DXIL C++ tables (`UnleashedRecompLib/shader/shader_cache.cpp`).
+4. **Embedded UI & Shader Resources (`tools/generate-resources.sh`)**:
+   - Compresses and embeds UI textures, fonts, and shader caches into C++ headers via `file_to_c` (`zstd`).
+5. **PS5 SDK, PacBrew & Static RADV Driver (`tools/setup-native-dependencies.sh`, `tools/setup-pacbrew-dependencies.sh`, `tools/build-radv.sh`)**:
+   - Bootstraps `PS5_PayloadSDK` (`libc.a`, `libps5platform.a`, `libc++.a`, `libc++abi.a`, `libunwind.a`) and PacBrew static libraries (`libSDL2.a`, `libzstd.a`, `libfreetype.a`, `libiconv.a`).
+   - Builds `PS5_Mesa`'s `libvulkan_radeon.ps5.a` (`-Dradv-winsys=ps5`) using the pre-generated OpenCL SPIR-V cache in `tooling/radv/clc-cache.tar.xz`.
+6. **Cross-Compile, Link & FSELF Sign (`tools/build.sh` + `tools/radv-link.sh`)**:
+   - Cross-compiles all C/C++ sources for `x86_64-sie-ps5` (`-msse4.1 -mssse3 -mcx16 -femulated-tls`), links with `libvulkan_radeon.ps5.a` and `ps5-emutls-cxa.o`, and signs the final PS5 FSELF executable (`pkg/PPSA99902/eboot.bin`).
 
-If you want a detailed performance report along with relevant system information, press F1 to view multiple performance graphs. This will aid in the process of gathering as much information as possible in order to identify the problem.
+---
 
-When using a system with multiple GPUs (such as a gaming laptop), please make sure that the game has chosen your dedicated graphics adapter and not your integrated one. The F1 menu will display which device has been selected by its name along with other options that might be available. If you're unable to get the game to select the correct device, you can attempt to override this by changing the `GraphicsDevice` property in `config.toml`. The name of the device must be an exact match.
+## 📦 Deploying & Running on PlayStation 5
 
-Some of the game's more demanding sections require strong CPU single-thread performance. While the recompilation process adds minimal CPU overhead, modern hardware is typically bottlenecked by this factor before the GPU.
+### Option A: Automated FTP + Payload Launch
 
-Linux has an unexpected advantage when it comes to CPU performance, showing improvements in CPU-bound scenarios. It's currently speculated that this could be due to the heavy amount of thread synchronization the game performs, an operation that is likely to be more performant on Linux's CPU scheduler than on Windows' scheduler. If you wish to gain some additional performance, playing on Linux instead of Windows could yield better results.
+```bash
+make deploy PS5_HOST=<PS5_IP_ADDRESS>
+```
 
-> [!WARNING]
-> Using external frame rate limiters or performance overlays may degrade performance or have negative consequences.
+### Option B: Manual Copy to `/data/homebrew/PPSA99902`
 
-### Can I install the game with a PlayStation 3 copy?
+Copy the generated package from `pkg/PPSA99902/` together with your `ressources/` directory to `/data/homebrew/PPSA99902/` on your PlayStation 5 (mounted at `/app0` inside the PS5 BigApp sandbox):
 
-**You cannot use the files from the PlayStation 3 version of the game.** Supporting these files would require an entirely new recompilation, as they have proprietary formatting that only works on PS3 and the code for these formats is only present in that version. All significant differences present in the PS3 version of the game have been included in this project as options.
+```text
+/data/homebrew/PPSA99902/
+├── eboot.bin                # Signed PS5 FSELF executable (from pkg/PPSA99902/eboot.bin)
+├── sce_module/
+│   └── libc.prx             # Signed clean-room runtime module (from pkg/PPSA99902/sce_module/libc.prx)
+├── sce_sys/
+│   ├── param.json           # Title metadata for PPSA99902
+│   ├── icon0.png            # 512x512 PS5 launcher icon
+│   ├── pic0.dds             # 3840x2160 BC7_UNORM DX10 DDS Home Screen background
+│   ├── pic1.dds             # 3840x2160 BC7_UNORM DX10 DDS launch splash screen
+│   └── snd0.at9             # Looped 48 kHz stereo ATRAC9 Home Screen background music
+└── ressources/              # Your Xbox 360 game assets + generated patched XEX
+    ├── game/                # Retail base game files
+    ├── update/              # Retail Title Update files
+    ├── patched/             # Generated default.xex (created by make in ressources/patched/default.xex)
+    └── dlc/                 # (Optional) Adventure Pack DLC folders
+```
 
-### Can I install the game with a Japanese copy?
+Launch `PPSA99902` from your PS5 homebrew launcher or send the launch controller payload to port `9021`:
 
-The Japanese version of Sonic Unleashed has some minor differences in both file structure and content that make this version of the game incompatible with the international release. Furthermore, the US and EU versions of the game already support Japanese. Supporting this version would only cause mod compatibility issues in the future, so it is unlikely to be added to the update roadmap as it would also require its own recompilation.
+```bash
+nc -N <PS5_IP_ADDRESS> 9021 < pkg/controllers/ps5-UnleashedRecomp-launch-PPSA99902.elf
+```
 
-### Why is the game detecting my PlayStation controller as an Xbox controller?
+Save data (`save/`), achievements (`achievements.bin`), and configuration (`config.toml`) are stored persistently inside `/data/homebrew/PPSA99902/user/` (`/app0/user/` in the sandbox).
+
+---
 
-If you're using a third-party input translation layer (such as DS4Windows or Steam Input), it is recommended that you disable these for full controller support.
+## 🎨 Customizing PS5 Home Screen Assets & Audio
 
-### Will macOS be supported?
+`sce_sys/` includes custom *Sonic Unleashed* PS5 presentation assets and native Linux conversion tools (`tools/png_to_bc7_dds` and `tools/wav_to_at9`):
 
-While macOS is not currently on the roadmap, this project welcomes any effort to add support for this platform. Unleashed Recompiled relies on [plume](https://github.com/renderbag/plume), a rendering hardware abstraction layer that will be getting support for Metal in the near future. You can join the macOS discussion on [this issue](https://github.com/hedge-dev/UnleashedRecomp/issues/455).
-
-### What other platforms will be supported?
-
-This project does not plan to support any more platforms other than Windows, Linux and potentially macOS at the moment. Any contributors who wish to support more platforms should do so through a fork.
-
-### Do you have plans to recompile other Xbox 360 games or Sonic games?
-
-The team behind Unleashed Recompiled does not currently have any plans to port more Xbox 360 games or Sonic games. Anyone is free to look into [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) if they wish to investigate these opportunities.
-
-## Building
-
-[Check out the building instructions here](/docs/BUILDING.md).
-
-## Credits
-
-### Unleashed Recompiled
-- [Skyth](https://github.com/blueskythlikesclouds): Creator and Lead Developer of the recompilation, as well as the developer of technologies created for it such as [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) and [XenosRecomp](https://github.com/hedge-dev/XenosRecomp). Other responsibilities include the creation of the graphics and audio backends for the project, alongside custom menus, dynamic UI aspect ratio and various patches and new features added to the game.
-
-- [Sajid](https://github.com/Sajidur78): Co-creator and Developer of the recompilation, as well as the developer of [XenonAnalyse](https://github.com/hedge-dev/XenonRecomp/?tab=readme-ov-file#XenonAnalyse). Other responsibilities include the implementation of core components for the project, like the Xbox 360 kernel translation layer used to make the game function.
-
-- [Hyper](https://github.com/hyperbx): Developer of system level features, such as achievement support and the custom menus, alongside various other patches and features to make the game feel right at home on modern systems. Aided in the creation of concept art and the final options menu thumbnails.
-
-- [Darío](https://github.com/DarioSamo): Creator of the graphics hardware abstraction layer [plume](https://github.com/renderbag/plume), used by the project's graphics backend. Alongside providing consultation for graphics and aiding with shader research and development, other responsibilities include the installer wizard and Linux support. Provided Spanish localization for the custom menus.
-
-- [ĐeäTh](https://github.com/DeaTh-G): Supervisor of game accurate design philosophy regarding the custom menus. Aided in the implementation of annotation support for Japanese localization, whilst providing minor support for all localization.
-
-- [RadiantDerg](https://github.com/RadiantDerg): Lead Artist behind the thumbnails used in the options menu. Other responsibilities include the creation of several debugging related codes for Hedge Mod Manager and providing aid with the research of the game's internals.
-
-- [PTKay](https://github.com/PTKay): Lead Concept Artist for the custom menus. Aided in the development of the installer wizard's visuals.
-
-- [SuperSonic16](https://github.com/thesupersonic16): Lead Developer of [Hedge Mod Manager](https://github.com/thesupersonic16/HedgeModManager), providing compatibility for modding with the recompilation. Aided in the creation of the deployment system for Linux builds.
-
-- [NextinHKRY](https://github.com/NextinMono): Aided in researching the game's internals and creating concept art for some options menu thumbnails used in the final release. Provided Italian localization for the custom menus.
-
-- [LadyLunanova](https://linktr.ee/ladylunanova): Artist behind the achievement trophy sprite and the keyboard and mouse icons used in the installer wizard. 
-
-- [LJSTAR](https://github.com/LJSTARbird): Artist behind the project logo, along with several thumbnail designs used in the options menu and created new icons for the button guide for opening the achievements menu. Provided French localization for the custom menus.
-
-- [saguinee](https://twitter.com/saguinee): Artist behind thumbnail designs used in the options menu such as Hints and Battle Theme.
-
-- [Goalringmod27](https://linktr.ee/goalringmod27): Concept Artist behind the achievements overlay shown during gameplay. Aided in the creation of the Transparency Anti-Aliasing thumbnail.
-
-- [RagdollClash](https://github.com/RagdollClash): Provisional support for dynamic UI aspect ratio.
-
-- [DaGuAr](https://twitter.com/TheDaguar): Provided Spanish localization for the custom menus alongside Darío.
-
-- [brianuuuSonic](https://github.com/brianuuu): Provided Japanese localization for the custom menus.
-
-- [Kitzuku](https://github.com/Kitzuku): Provided German localization for the custom menus.
-
-### Special Thanks
-- [Mr-Wiseguy](https://github.com/Mr-Wiseguy): Creator of [N64: Recompiled](https://github.com/N64Recomp/N64Recomp), which was the inspiration behind the creation of this project. Provided information and assistance at the beginning of development.
-
-- [xenia-project](https://github.com/xenia-project/xenia): Extraordinary amounts of research regarding the inner workings of the Xbox 360, which sped up the development of the recompilation.
-
-- [Katlin Daigler](https://katlindaigler.carbonmade.com): Provided consultation for logo design.
-
-- [ocornut](https://github.com/ocornut): Creator of [Dear ImGui](https://github.com/ocornut/imgui), which is used as the backbone of the custom menus.
-
-- Raymond Chen: Useful resources on Windows application development with his blog ["The Old New Thing"](https://devblogs.microsoft.com/oldnewthing/).
+| File | Role | PS5 Format Specification |
+| :--- | :--- | :--- |
+| `sce_sys/icon0.png` | PS5 Home Screen tile icon | `512x512` 32-bit RGBA PNG |
+| `sce_sys/pic0.png` → `sce_sys/pic0.dds` | Home Screen selection background | `3840x2160` `BC7_UNORM` (`DXGI_FORMAT_BC7_UNORM = 98`) DX10 2D DDS, 1 mip (`8,294,548` B) |
+| `sce_sys/pic1.png` → `sce_sys/pic1.dds` | Game launch splash screen | `3840x2160` `BC7_UNORM` (`DXGI_FORMAT_BC7_UNORM = 98`) DX10 2D DDS, 1 mip (`8,294,548` B) |
+| `sce_sys/snd0.{wav,mp3,ogg,flac}` → `sce_sys/snd0.at9` | Home Screen background music | Looped `48000` Hz stereo ATRAC9 RIFF/WAVE (`<= 2 MiB`, up to ~87s) |
+
+To replace any asset via the CLI helper:
+
+```bash
+bash tools/prepare-assets.sh \
+    --icon /path/to/icon.png \
+    --selection-background /path/to/home-bg.png \
+    --launch-background /path/to/splash-bg.png \
+    --audio /path/to/music.mp3
+```
+
+Or simply replace `sce_sys/pic0.png`, `sce_sys/pic1.png`, `sce_sys/icon0.png`, or `sce_sys/snd0.mp3` and run `make assets`.
+
+---
+
+## 🔬 Engineering & Architecture Deep-Dive
+
+### 1. 4 GiB Xbox 360 Guest Memory Arena in PS5 Direct Memory (`UnleashedRecomp/kernel/memory.cpp`)
+
+Recompiled Xbox 360 PowerPC code translates 32-bit guest addresses (`0x00000000..0xFFFFFFFF`) by adding them to `g_memory.base`, requiring a contiguous **4 GiB (`0x100000000` bytes)** virtual address reservation. On PS5, anonymous `mmap` (`MAP_ANONYMOUS`) draws from a ~400 MiB flexible memory pool and cannot satisfy a 4 GiB mapping. Instead, `Memory::Memory()` reserves a 4 GiB virtual range at `0x1000000000`, allocates 4 GiB of physical memory from the PS5 BigApp's **12 GiB Direct Memory (DMEM) pool** via `sceKernelAllocateDirectMemory`, maps it with `sceKernelMapDirectMemory(..., MAP_FIXED, ...)`, and protects the null-pointer guard page (`0x1000000000..0x1000004000`) with `PROT_NONE`.
+
+### 2. Coordinated Emulated TLS & C++ `thread_local` Destructor Runtime (`tools/radv-link.sh`)
+
+PS5 Clang (`-target x86_64-sie-ps5`) uses emulated TLS (`__emutls_get_address`), which allocates per-thread `thread_local` objects under a pthread key (`emutls_pthread_key`) created before `libc++abi`'s `__cxa_thread_atexit_impl` destructor key (`destructors_key`). Without coordination, FreeBSD `libkernel.sprx` (`_thread_cleanupspecific`) frees `emutls` storage into `dlmalloc` *before* running C++ `thread_local` destructors (`std::vector::~vector()`), corrupting `this->__begin_` with `dlmalloc` `smallbin` freelist pointers and causing a `SIGSEGV` on worker thread exit. `tools/radv-link.sh` compiles a unified `ps5-emutls-cxa.o` runtime that drains all C++ `thread_local` destructors while `emutls` buffers are still live and defers `emutls` deallocation (`EMUTLS_SKIP_DESTRUCTOR_ROUNDS = 2`).
+
+### 3. 2 MiB Direct Memory Stacks for Guest PowerPC Threads (`UnleashedRecomp/cpu/guest_thread.h`)
+
+`libkernel.sprx` defaults to 64 KiB thread stacks, which deeply nested PowerPC call trees overflow. On `__PROSPERO__`, `GuestThreadHandle` uses `std::thread`, routing through `libps5platform`'s `--wrap=pthread_create` (`threads.c`) to allocate a **2 MiB stack in PS5 Direct Memory with an unmapped guard page** for every Xbox 360 guest thread.
+
+### 4. Live Language Virtual Filesystem & In-Process Soft Reboot (`kernel/io/file_system.cpp`, `patches/CGameModeStageTitle_patches.cpp`)
+
+To allow switching text and voice languages on PS5 without terminating the BigApp container:
+- `XCreateFileA` (`kernel/io/file_system.cpp`) dynamically redirects per-language archive paths (`Languages/<Lang>/*.ar.00`, `*.arl`) and voice archive paths (`voices/<Lang>/*`) to match the active `Config::Language` and `Config::VoiceLanguage`.
+- Confirming the localized restart prompt when leaving the Options menu sets `App::s_isSoftRebootRequested = true`, which `SWA::CGameModeStageTitle::Update` (`sub_825518B8`) handles on the main thread by syncing `CApplicationDocument`, updating CriAtom voice bindings (`sub_825198C8`), and transitioning `SWA::CGame` (`sub_825517C8`) to a fresh `CGameModeStageTitle` state that reloads `Title.ar.00` and `WorldMap.ar.00` in the new language.
+
+---
+
+## 🛠️ Makefile Targets Reference
+
+| Command | Description |
+| :--- | :--- |
+| `make` | Full automatic build: prepares `sce_sys/` assets, builds host tools, recompiles XEX & shaders from `ressources/`, builds RADV & SDK dependencies, compiles PS5 sources, and signs `pkg/PPSA99902/eboot.bin`. |
+| `make assets` | Converts `sce_sys/pic0.png` & `sce_sys/pic1.png` to 4K `BC7_UNORM` DX10 DDS (`pic0.dds` & `pic1.dds`), converts `sce_sys/snd0.{wav,mp3,ogg,flac}` to looped 48 kHz ATRAC9 (`snd0.at9`), and validates `sce_sys/`. |
+| `make tools` | Builds host recompiler and asset tools (`XenonRecomp`, `XenosRecomp`, `x_decompress`, `file_to_c`, `png_to_bc7_dds`, `wav_to_at9`, `ps5-native-tool`) into `tools/bin/`. |
+| `make recomp` | Runs the Xbox 360 XEX + Xenos shader + DLC recompilation pipeline from `ressources/{game,update,dlc}`. |
+| `make deploy PS5_HOST=<IP>` | Uploads `dist/PPSA99902/` to `/data/homebrew/PPSA99902/` via FTP and launches the title via port `9021`. |
+| `make close PS5_HOST=<IP>` | Sends the close controller payload to terminate `PPSA99902` on the console. |
+| `make clean` | Removes intermediate `build/`, `dist/`, and `pkg/` build artifacts. |
+
+---
+
+## 🙏 Credits & Acknowledgments
+
+### Upstream *Unleashed Recompiled* Team & Repositories
+
+All credit for the original *Unleashed Recompiled* project, recompilers, custom UI, artwork, and research goes to the **[hedge-dev](https://github.com/hedge-dev)** team and contributors:
+
+- **[hedge-dev/UnleashedRecomp](https://github.com/hedge-dev/UnleashedRecomp)** — The official *Sonic Unleashed Recompiled* project:
+  - **[Skyth (@blueskythlikesclouds)](https://github.com/blueskythlikesclouds)** — Creator and Lead Developer of *Unleashed Recompiled*, **[XenonRecomp](https://github.com/hedge-dev/XenonRecomp)**, and **[XenosRecomp](https://github.com/hedge-dev/XenosRecomp)**, graphics/audio backends, custom menus, dynamic UI aspect ratio, and game patches.
+  - **[Sajid (@Sajidur78)](https://github.com/Sajidur78)** — Co-creator and Developer of *Unleashed Recompiled*, **[XenonAnalyse](https://github.com/hedge-dev/XenonRecomp)**, and the Xbox 360 kernel translation layer.
+  - **[Hyper (@hyperbx)](https://github.com/hyperbx)** — Developer of system-level features, achievement system, custom menus, patches, and options menu thumbnails.
+  - **[Darío (@DarioSamo)](https://github.com/DarioSamo)** — Creator of **[plume](https://github.com/renderbag/plume)**, shader research, installer wizard, Linux support, and Spanish localization.
+  - **[ĐeäTh (@DeaTh-G)](https://github.com/DeaTh-G)** — Game-accurate UI design supervision, Japanese ruby annotation support, and localization support.
+  - **[RadiantDerg (@RadiantDerg)](https://github.com/RadiantDerg)** — Lead Artist for options menu thumbnails and game internals research.
+  - **[PTKay (@PTKay)](https://github.com/PTKay)** — Lead Concept Artist for custom menus and installer wizard visuals.
+  - **[SuperSonic16 (@thesupersonic16)](https://github.com/thesupersonic16)** — Lead Developer of **[Hedge Mod Manager](https://github.com/thesupersonic16/HedgeModManager)** and Linux deployment support.
+  - **[NextinHKRY (@NextinMono)](https://github.com/NextinMono)** — Game internals research, thumbnail concept art, and Italian localization.
+  - **[LadyLunanova](https://linktr.ee/ladylunanova)** — Achievement trophy sprite and keyboard/mouse icons.
+  - **[LJSTAR (@LJSTARbird)](https://github.com/LJSTARbird)** — Project logo artist, options menu thumbnails, button guide icons, and French localization.
+  - **[saguinee](https://twitter.com/saguinee)** — Options menu thumbnail artist.
+  - **[Goalringmod27](https://linktr.ee/goalringmod27)** — Achievements overlay concept artist and thumbnail assistance.
+  - **[RagdollClash (@RagdollClash)](https://github.com/RagdollClash)** — Provisional dynamic UI aspect ratio support.
+  - **[DaGuAr](https://twitter.com/TheDaguar)**, **[brianuuuSonic (@brianuuu)](https://github.com/brianuuu)**, and **[Kitzuku (@Kitzuku)](https://github.com/Kitzuku)** — Spanish, Japanese, and German localization.
+- **[hedge-dev/XenonRecomp](https://github.com/hedge-dev/XenonRecomp)** — Xbox 360 PowerPC-to-C++ static recompiler and analyser.
+- **[hedge-dev/XenosRecomp](https://github.com/hedge-dev/XenosRecomp)** — Xbox 360 Xenos shader-to-HLSL/SPIR-V/DXIL recompiler.
+- **[hedge-dev/UnleashedRecompResources](https://github.com/hedge-dev/UnleashedRecompResources)** — Official UI textures, fonts, and image resources for *Unleashed Recompiled*.
+
+### PlayStation 5 Port, Toolchain & Driver Repositories
+
+- **[Nazky](https://github.com/Nazky)** — PlayStation 5 (`__PROSPERO__`) port, runtime adaptations, PS5 QoL features, soft-reboot architecture, and Linux PS5 asset pipeline (**[Nazky/UnleashedRecomp-Prospero](https://github.com/Nazky/UnleashedRecomp-Prospero)**).
+- **[Nazky/plume-ps5](https://github.com/Nazky/plume-ps5)** (`prospero` branch) & **[renderbag/plume](https://github.com/renderbag/plume)** — PlayStation 5 (`__PROSPERO__`) Vulkan backend port of the `plume` rendering abstraction layer.
+- **[Nazky/ps5-plume-triangle](https://github.com/Nazky/ps5-plume-triangle)** — Companion PS5 4K Vulkan & DualSense reference application (`PPSA99901`).
+- **[mihawk-99/PS5_Mesa](https://github.com/mihawk-99/PS5_Mesa)** — PlayStation 5 port of the Mesa 3D RADV Vulkan driver (`libvulkan_radeon.ps5.a`) and `VK_KHR_display` PS5 winsys backend.
+- **[mihawk-99/PS5_Vulkan](https://github.com/mihawk-99/PS5_Vulkan)** & **[mihawk-99/PS5_vkQuake](https://github.com/mihawk-99/PS5_vkQuake)** — [@mihawk-99](https://github.com/mihawk-99) for the PlayStation 5 Vulkan toolchain, RADV static link recipe, clean-room `libc.prx` builder, FSELF signer (`ps5-native-tool`), and controller payloads.
+- **[ps5-payload-dev/sdk](https://github.com/ps5-payload-dev/sdk)** & **[mihawk-99/PS5_PayloadSDK](https://github.com/mihawk-99/PS5_PayloadSDK)** — [John Törnblom (@john-tornblom)](https://github.com/john-tornblom), [@mihawk-99](https://github.com/mihawk-99), and contributors for the PlayStation 5 Payload SDK, C/C++ standard libraries, Direct Memory heap/thread allocator (`libps5platform`), and Sony system service bindings.
+- **[ps5-payload-dev/pacbrew-repo](https://github.com/ps5-payload-dev/pacbrew-repo)** — Prebuilt PlayStation 5 static port libraries (`libSDL2`, `libzstd`, `libfreetype`, `libiconv`, `libpng`, `liblzma`, `zlib`).
+- **[earthonion/ps5-at9-converter](https://github.com/earthonion/ps5-at9-converter)** — Reference for PlayStation 5 `snd0.at9` ATRAC9 container specifications.
+
+### Third-Party Libraries & Research Projects
+
+- **[N64Recomp/N64Recomp](https://github.com/N64Recomp/N64Recomp)** ([Mr-Wiseguy](https://github.com/Mr-Wiseguy)) — Static recompilation inspiration and guidance.
+- **[xenia-project/xenia](https://github.com/xenia-project/xenia)** — Foundational Xbox 360 kernel, XEX, and Xenos GPU research.
+- **[ocornut/imgui](https://github.com/ocornut/imgui)** & **[epezent/implot](https://github.com/epezent/implot)** — Immediate-mode GUI and plotting libraries powering the custom menus and performance overlay.
+- **[Thealexbarney/LibAtrac9](https://github.com/Thealexbarney/LibAtrac9)** — ATRAC9 audio encoder/decoder library (`thirdparty/libatrac9`) used by `tools/wav_to_at9`.
+- **[mackron/dr_libs](https://github.com/mackron/dr_libs)** (`dr_mp3`, `dr_flac`) & **[nothings/stb](https://github.com/nothings/stb)** (`stb_image`, `stb_image_resize`, `stb_vorbis`) — Single-header audio and image codecs used by the engine and PS5 asset converters.
+- **[pavel-kirienko/o1heap](https://github.com/pavel-kirienko/o1heap)** — Constant-complexity deterministic memory allocator used for guest heap management.
+- **[cameron314/concurrentqueue](https://github.com/cameron314/concurrentqueue)** — Lock-free multi-producer/multi-consumer queue.
+- **[redorav/ddspp](https://github.com/redorav/ddspp)** — Header-only DDS texture parser.
+- **[nlohmann/json](https://github.com/nlohmann/json)**, **[Neargye/magic_enum](https://github.com/Neargye/magic_enum)**, **[martinus/unordered_dense](https://github.com/martinus/unordered_dense)**, **[marzer/tomlplusplus](https://github.com/marzer/tomlplusplus)**, **[fmtlib/fmt](https://github.com/fmtlib/fmt)**, and **[Cyan4973/xxHash](https://github.com/Cyan4973/xxHash)** — Core C++ containers, reflection, serialization, formatting, and hashing libraries.
+- **[simd-everywhere/simde](https://github.com/simd-everywhere/simde)** — Portable SIMD intrinsics translation layer used by recompiled VMX128 PowerPC code.
+- **[kyz/libmspack](https://github.com/kyz/libmspack)**, **[kokke/tiny-AES-c](https://github.com/kokke/tiny-AES-c)**, and **[vog/sha1](https://github.com/vog/sha1)** — LZX decompression, AES decryption, and SHA-1 hashing for Xbox 360 XEX/container parsing.
+- **[aras-p/smol-v](https://github.com/aras-p/smol-v)** & **[microsoft/DirectXShaderCompiler](https://github.com/microsoft/DirectXShaderCompiler)** — SPIR-V compression and HLSL-to-SPIR-V/DXIL shader compilation.
+- **[KhronosGroup/Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers)**, **[zeux/volk](https://github.com/zeux/volk)**, **[GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)**, and **[KhronosGroup/SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect)** — Vulkan headers, meta-loader, memory allocator, and shader reflection.
+- **[libsdl-org/SDL](https://github.com/libsdl-org/SDL)** & **[facebook/zstd](https://github.com/facebook/zstd)** — Event/controller abstraction and Zstandard compression.
+
+---
+
+## 📄 License
+
+This project is licensed under the **[GNU General Public License v3.0 (GPL-3.0)](LICENSE.md)**.

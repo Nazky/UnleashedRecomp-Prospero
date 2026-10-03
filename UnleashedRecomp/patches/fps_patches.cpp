@@ -98,12 +98,31 @@ bool LoadingUpdateMidAsmHook(PPCRegister& r31)
     g_prev = now;
 
     uint8_t* base = g_memory.base;
-    uint32_t application = PPC_LOAD_U32(PPC_LOAD_U32(r31.u32 + 4));
-    uint32_t update = PPC_LOAD_U32(PPC_LOAD_U32(application) + 20);
-
-    g_ppcContext->r3.u32 = application;
-    g_ppcContext->f1.f64 = deltaTime;
-    g_memory.FindFunction(update)(*g_ppcContext, base);
+    if (r31.u32 != 0)
+    {
+        uint32_t member = PPC_LOAD_U32(r31.u32 + 4);
+        if (member != 0)
+        {
+            uint32_t application = PPC_LOAD_U32(member);
+            if (application != 0)
+            {
+                uint32_t vtable = PPC_LOAD_U32(application);
+                if (vtable != 0)
+                {
+                    uint32_t update = PPC_LOAD_U32(vtable + 20);
+                    if (update >= PPC_CODE_BASE && update < PPC_CODE_BASE + PPC_CODE_SIZE)
+                    {
+                        if (auto func = g_memory.FindFunction(update))
+                        {
+                            g_ppcContext->r3.u32 = application;
+                            g_ppcContext->f1.f64 = deltaTime;
+                            func(*g_ppcContext, base);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     bool loading = *SWA::SGlobals::ms_IsLoading;
     if (loading)

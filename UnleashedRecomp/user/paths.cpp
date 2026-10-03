@@ -1,12 +1,23 @@
 #include "paths.h"
 #include <os/process.h>
+#include <fstream>
+#if defined(__PROSPERO__)
+#include <cstdio>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 std::filesystem::path g_executableRoot = os::process::GetExecutableRoot();
 std::filesystem::path g_userPath = BuildUserPath();
 
 bool CheckPortable()
 {
-    return std::filesystem::exists(g_executableRoot / "portable.txt");
+#if defined(__PROSPERO__)
+    return access("/app0/portable.txt", F_OK) == 0;
+#else
+    std::error_code ec;
+    return std::filesystem::exists(g_executableRoot / "portable.txt", ec);
+#endif
 }
 
 std::filesystem::path BuildUserPath()
@@ -22,6 +33,28 @@ std::filesystem::path BuildUserPath()
         userPath = std::filesystem::path{ knownPath } / USER_DIRECTORY;
 
     CoTaskMemFree(knownPath);
+#elif defined(__PROSPERO__)
+    static const char* const s_writableRoots[] = {
+        "/app0/user",
+        "/data/UnleashedRecomp",
+        "/temp0/UnleashedRecomp",
+        "/tmp/UnleashedRecomp",
+        "/download0/PPSA99902/user",
+    };
+    for (const char* candidateStr : s_writableRoots)
+    {
+        mkdir(candidateStr, 0777);
+        std::string probe = std::string(candidateStr) + "/.write_test";
+        if (FILE* fp = std::fopen(probe.c_str(), "wb"))
+        {
+            std::fclose(fp);
+            unlink(probe.c_str());
+            userPath = std::filesystem::path(candidateStr);
+            break;
+        }
+    }
+    if (userPath.empty())
+        userPath = std::filesystem::path("/app0");
 #elif defined(__linux__) || defined(__APPLE__)
     const char* homeDir = getenv("HOME");
 #if defined(__linux__)

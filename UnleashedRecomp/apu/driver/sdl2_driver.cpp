@@ -4,6 +4,18 @@
 #include <os/logger.h>
 #include <user/config.h>
 
+#if defined(__PROSPERO__)
+#include <algorithm>
+extern "C"
+{
+    int32_t sceAudioOutInit(void);
+    int32_t sceAudioOutOpen(int32_t userId, int32_t type, int32_t index, uint32_t len, uint32_t freq, uint32_t param);
+    int32_t sceAudioOutOutput(int32_t handle, const void* ptr);
+    int32_t sceAudioOutClose(int32_t handle);
+}
+static int32_t s_ps5AudioPort = -1;
+#endif
+
 static PPCFunc* g_clientCallback{};
 static uint32_t g_clientCallbackParam{}; // pointer in guest memory
 static SDL_AudioDeviceID g_audioDevice{};
@@ -11,6 +23,24 @@ static bool g_downMixToStereo;
 
 static void CreateAudioDevice()
 {
+#if defined(__PROSPERO__)
+    if (s_ps5AudioPort > 0)
+    {
+        sceAudioOutClose(s_ps5AudioPort);
+        s_ps5AudioPort = -1;
+    }
+    int32_t initRes = sceAudioOutInit();
+    if (initRes == 0 || (uint32_t)initRes == 0x8026000e)
+    {
+        s_ps5AudioPort = sceAudioOutOpen(0xff, 0, 0, XAUDIO_NUM_SAMPLES, XAUDIO_SAMPLES_HZ, 1);
+        if (s_ps5AudioPort > 0)
+        {
+            g_downMixToStereo = true;
+            LOGFN("Opened PS5 sceAudioOut port={} (48000 Hz, 256 grain, s16 stereo)", s_ps5AudioPort);
+            return;
+        }
+    }
+#endif
     if (g_audioDevice != NULL)
         SDL_CloseAudioDevice(g_audioDevice);
 
@@ -38,6 +68,11 @@ static void CreateAudioDevice()
 
 void XAudioInitializeSystem()
 {
+#if defined(__PROSPERO__)
+    CreateAudioDevice();
+    if (s_ps5AudioPort > 0)
+        return;
+#endif
 #ifdef _WIN32
     // Force wasapi on Windows.
     SDL_setenv("SDL_AUDIODRIVER", "wasapi", true);
@@ -68,6 +103,14 @@ static void AudioThread()
 
     while (!g_audioThreadShouldExit)
     {
+#if defined(__PROSPERO__)
+        if (s_ps5AudioPort > 0)
+        {
+            ctx.ppcContext.r3.u32 = g_clientCallbackParam;
+            g_clientCallback(ctx.ppcContext, g_memory.base);
+            continue;
+        }
+#endif
         uint32_t queuedAudioSize = SDL_GetQueuedAudioSize(g_audioDevice);
         constexpr size_t MAX_LATENCY = 10;
         const size_t callbackAudioSize = channels * XAUDIO_NUM_SAMPLES * sizeof(float);
@@ -135,6 +178,19 @@ void XAudioSubmitFrame(void* samples)
             audioFrames[i * 2 + 1] = (ch1 + ch2 * 0.75f + ch5) * Config::MasterVolume;
         }
 
+#if defined(__PROSPERO__)
+        if (s_ps5AudioPort > 0)
+        {
+            alignas(16) int16_t pcm16[2 * XAUDIO_NUM_SAMPLES];
+            for (size_t i = 0; i < 2 * XAUDIO_NUM_SAMPLES; i++)
+            {
+                float s = std::clamp(audioFrames[i], -1.0f, 1.0f);
+                pcm16[i] = static_cast<int16_t>(s * 32767.0f);
+            }
+            sceAudioOutOutput(s_ps5AudioPort, pcm16);
+            return;
+        }
+#endif
         SDL_QueueAudio(g_audioDevice, &audioFrames, sizeof(audioFrames));
     }
     else

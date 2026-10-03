@@ -89,7 +89,7 @@ if (WIN32)
         "os/win32/user_win32.cpp"
         "os/win32/version_win32.cpp"
     )
-elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
+elseif (CMAKE_SYSTEM_NAME MATCHES "Linux|Prospero|FreeBSD")
     set(UNLEASHED_RECOMP_OS_CXX_SOURCES
         "os/linux/logger_linux.cpp"
         "os/linux/media_linux.cpp"

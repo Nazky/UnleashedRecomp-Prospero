@@ -2,11 +2,15 @@
 #include <api/SWA.h>
 #include <ui/achievement_menu.h>
 #include <ui/button_guide.h>
+#include <ui/fader.h>
+#include <ui/message_window.h>
 #include <ui/options_menu.h>
 #include <locale/locale.h>
 #include <app.h>
 
 bool g_isClosed;
+static bool g_pauseRestartFaderBegun = false;
+static int g_pauseRestartMessageResult = -1;
 
 float g_achievementMenuIntroTime = 0.0f;
 constexpr float g_achievementMenuIntroThreshold = 3.0f;
@@ -162,8 +166,38 @@ PPC_FUNC(sub_824B0930)
         if (OptionsMenu::CanClose() && pInputState->GetPadState().IsTapped(SWA::eKeyState_B))
         {
             OptionsMenu::Close();
-            GuestToHostFunction<int>(sub_824AFD28, pHudPause, 0, 0, 0, 1);
-            __imp__sub_824B0930(ctx, base);
+            if (!OptionsMenu::s_isRestartRequired)
+            {
+                GuestToHostFunction<int>(sub_824AFD28, pHudPause, 0, 0, 0, 1);
+                __imp__sub_824B0930(ctx, base);
+            }
+        }
+    }
+    else if (OptionsMenu::s_isPause && (OptionsMenu::s_isRestartRequired || g_pauseRestartFaderBegun))
+    {
+        std::array<std::string, 2> options = { Localise("Common_Yes"), Localise("Common_No") };
+
+        if (!g_pauseRestartFaderBegun && MessageWindow::Open(Localise("Options_Message_RestartConfirm"), &g_pauseRestartMessageResult, options, 0, 1) == MSG_CLOSED)
+        {
+            const int choice = g_pauseRestartMessageResult;
+            g_pauseRestartMessageResult = -1;
+
+            if (choice == 0)
+            {
+                OptionsMenu::CommitRestartSettings();
+                g_pauseRestartFaderBegun = true;
+                Fader::FadeOut(1, []()
+                {
+                    g_pauseRestartFaderBegun = false;
+                    App::Restart();
+                });
+            }
+            else
+            {
+                OptionsMenu::RevertRestartSettings();
+                GuestToHostFunction<int>(sub_824AFD28, pHudPause, 0, 0, 0, 1);
+                __imp__sub_824B0930(ctx, base);
+            }
         }
     }
     else

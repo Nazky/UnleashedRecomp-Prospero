@@ -1,6 +1,8 @@
 #include "installer_wizard.h"
 
+#if !defined(__PROSPERO__)
 #include <nfd.h>
+#endif
 
 #include <apu/embedded_player.h>
 #include <install/installer.h>
@@ -1083,6 +1085,7 @@ static void DrawProgressBar(float progressRatio)
     drawList->AddRectFilledMultiColor(sliderMin, sliderMax, sliderColor0, sliderColor0, sliderColor1, sliderColor1);
 }
 
+#if !defined(__PROSPERO__)
 static bool ConvertPathSet(const nfdpathset_t *pathSet, std::list<std::filesystem::path> &filePaths)
 {
     nfdpathsetsize_t pathSetCount = 0;
@@ -1106,9 +1109,50 @@ static bool ConvertPathSet(const nfdpathset_t *pathSet, std::list<std::filesyste
 
     return true;
 }
+#endif
 
 static void PickerThreadProcess()
 {
+#if defined(__PROSPERO__)
+    static const std::filesystem::path s_roots[] = {
+        "/app0/ressources",
+        "/app0/resources",
+        "/app0/PPSA99902/ressources",
+        "/app0/PPSA99902/resources",
+        "/app0/PPSA99902",
+        "/app0",
+        "/data/UnleashedRecomp/ressources",
+        "/data/UnleashedRecomp/resources",
+        "/data/UnleashedRecomp",
+        "/download0/PPSA99902/ressources",
+        "/download0/PPSA99902/resources",
+        "/download0/PPSA99902",
+    };
+    std::error_code ec;
+    for (const auto& root : s_roots)
+    {
+        if (!std::filesystem::exists(root, ec))
+            continue;
+        if (g_currentPickerFolderMode)
+        {
+            for (const char* sub : { "game", "update", "dlc" })
+            {
+                if (std::filesystem::exists(root / sub, ec))
+                    g_currentPickerResults.emplace_back(root / sub);
+            }
+            g_currentPickerResults.emplace_back(root);
+        }
+        else
+        {
+            for (const auto& entry : std::filesystem::directory_iterator(root, ec))
+            {
+                if (entry.is_regular_file(ec))
+                    g_currentPickerResults.emplace_back(entry.path());
+            }
+        }
+    }
+    g_currentPickerResultsReady = true;
+#else
     const nfdpathset_t *pathSet;
     nfdresult_t result = NFD_ERROR;
     if (g_currentPickerFolderMode)
@@ -1131,6 +1175,7 @@ static void PickerThreadProcess()
     }
 
     g_currentPickerResultsReady = true;
+#endif
 }
 
 static void PickerStart(bool folderMode) {
@@ -1849,7 +1894,9 @@ bool InstallerWizard::Run(std::filesystem::path installPath, bool skipGame)
     g_installPath = installPath;
 
     EmbeddedPlayer::Init();
+#if !defined(__PROSPERO__)
     NFD_Init();
+#endif
 
     // Guarantee one controller is initialized. We'll rely on SDL's event loop to get the controller events.
     XAMINPUT_STATE inputState;
@@ -1880,7 +1927,9 @@ bool InstallerWizard::Run(std::filesystem::path installPath, bool skipGame)
     }
 
     GameWindow::SetFullscreenCursorVisibility(false);
+#if !defined(__PROSPERO__)
     NFD_Quit();
+#endif
 
     InstallerWizard::Shutdown();
     EmbeddedPlayer::Shutdown();

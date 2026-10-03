@@ -6,6 +6,60 @@
 #include <user/config.h>
 #include <app.h>
 
+static bool IsValidGuestPointer(uint32_t ptr)
+{
+    return ptr >= 0x10000;
+}
+
+static void SyncApplicationDocumentLanguage(uint32_t guestAppDocPtr = 0)
+{
+    SWA::CApplicationDocument* pApplicationDocument = nullptr;
+    if (IsValidGuestPointer(guestAppDocPtr))
+        pApplicationDocument = (SWA::CApplicationDocument*)g_memory.Translate(guestAppDocPtr);
+    if (!pApplicationDocument)
+        pApplicationDocument = SWA::CApplicationDocument::GetInstance();
+    if (!pApplicationDocument)
+        return;
+
+    pApplicationDocument->m_Language = (SWA::ELanguage)App::ToSwaLanguage(Config::Language.Value);
+    pApplicationDocument->m_VoiceLanguage = (SWA::EVoiceLanguage)Config::VoiceLanguage.Value;
+    pApplicationDocument->m_Region = (Config::Language == ELanguage::Japanese)
+        ? SWA::eRegion_Japan
+        : SWA::eRegion_RestOfWorld;
+    pApplicationDocument->m_InspireSubtitles = Config::Subtitles;
+}
+
+static void SyncSConfigLanguageStruct(uint32_t guestConfigPtr)
+{
+    if (!IsValidGuestPointer(guestConfigPtr))
+        return;
+
+    auto* pConfigStruct = (uint8_t*)g_memory.Translate(guestConfigPtr);
+    *reinterpret_cast<be<SWA::ELanguage>*>(pConfigStruct + 0x00) = (SWA::ELanguage)App::ToSwaLanguage(Config::Language.Value);
+    *reinterpret_cast<be<SWA::EVoiceLanguage>*>(pConfigStruct + 0x04) = (SWA::EVoiceLanguage)Config::VoiceLanguage.Value;
+    *reinterpret_cast<be<SWA::ERegion>*>(pConfigStruct + 0x10) = (Config::Language == ELanguage::Japanese)
+        ? SWA::eRegion_Japan
+        : SWA::eRegion_RestOfWorld;
+    *reinterpret_cast<bool*>(pConfigStruct + 0x15) = Config::Subtitles;
+}
+
+// Lookup text language folder name from CApplicationDocument
+PPC_FUNC_IMPL(__imp__sub_824EB938);
+PPC_FUNC(sub_824EB938)
+{
+    SyncApplicationDocumentLanguage(ctx.r4.u32);
+    __imp__sub_824EB938(ctx, base);
+}
+
+// Apply SConfig voice language to CriAtom
+PPC_FUNC_IMPL(__imp__sub_825198C8);
+PPC_FUNC(sub_825198C8)
+{
+    SyncSConfigLanguageStruct(ctx.r3.u32);
+    SyncApplicationDocumentLanguage();
+    __imp__sub_825198C8(ctx, base);
+}
+
 // SWA::Message::MsgRequestStartLoading::Impl
 PPC_FUNC_IMPL(__imp__sub_824DCF38);
 PPC_FUNC(sub_824DCF38)
@@ -81,9 +135,7 @@ PPC_FUNC(sub_824DAB60)
 PPC_FUNC_IMPL(__imp__sub_824EB9B0);
 PPC_FUNC(sub_824EB9B0)
 {
-    auto pApplicationDocument = (SWA::CApplicationDocument*)g_memory.Translate(ctx.r4.u32);
-
-    pApplicationDocument->m_VoiceLanguage = (SWA::EVoiceLanguage)Config::VoiceLanguage.Value;
+    SyncApplicationDocumentLanguage(ctx.r4.u32);
 
     __imp__sub_824EB9B0(ctx, base);
 }
@@ -124,10 +176,18 @@ PPC_FUNC(sub_824EFD28)
 {
     auto r3 = ctx.r3;
 
-    // SWA::CSigninXenon::InitializeDLC
-    ctx.r3.u64 = PPC_LOAD_U32(r3.u32 + 4) + 200;
-    ctx.r4.u64 = 0;
-    sub_822C57D8(ctx, base);
+    SyncApplicationDocumentLanguage(r3.u32);
+
+    static bool s_dlcInitialized = false;
+    if (!s_dlcInitialized && IsValidGuestPointer(r3.u32))
+    {
+        s_dlcInitialized = true;
+
+        // SWA::CSigninXenon::InitializeDLC
+        ctx.r3.u64 = PPC_LOAD_U32(r3.u32 + 4) + 200;
+        ctx.r4.u64 = 0;
+        sub_822C57D8(ctx, base);
+    }
 
     ctx.r3 = r3;
     __imp__sub_824EFD28(ctx, base);

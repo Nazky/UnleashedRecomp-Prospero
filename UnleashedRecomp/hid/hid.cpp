@@ -19,7 +19,11 @@ void hid::SetProhibitedInputs(uint16_t wButtons, bool leftStick, bool rightStick
 
 bool hid::IsInputAllowed()
 {
+#if defined(__PROSPERO__)
+    return true;
+#else
     return GameWindow::s_isFocused || Config::AllowBackgroundInput;
+#endif
 }
 
 bool hid::IsInputDeviceController()

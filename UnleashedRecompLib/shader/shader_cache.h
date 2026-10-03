@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+
 struct ShaderCacheEntry
 {
     const uint64_t hash;

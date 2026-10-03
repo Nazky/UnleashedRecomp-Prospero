@@ -9,6 +9,9 @@
 #include "xxHashMap.h"
 #include <user/paths.h>
 #include <SDL.h>
+#if defined(__PROSPERO__)
+#include <sys/stat.h>
+#endif
 
 struct XamListener : KernelObject
 {
@@ -324,8 +327,13 @@ uint32_t XamContentCreateEx(uint32_t dwUserIndex, const char* szRootName, const 
             const std::string root = (const char*)rootPath.u8string().c_str();
             XamRegisterContent(*pContentData, root);
 
+#if defined(__PROSPERO__)
+            mkdir(GetUserPath().string().c_str(), 0777);
+            mkdir(root.c_str(), 0777);
+#else
             std::error_code ec;
             std::filesystem::create_directory(rootPath, ec);
+#endif
 
             XamRootCreate(szRootName, root);
         }
@@ -410,7 +418,7 @@ uint32_t XamInputGetState(uint32_t userIndex, uint32_t flags, XAMINPUT_STATE* st
 
     auto keyboardState = SDL_GetKeyboardState(NULL);
 
-    if (GameWindow::s_isFocused && !keyboardState[SDL_SCANCODE_LALT])
+    if (keyboardState && GameWindow::s_isFocused && !keyboardState[SDL_SCANCODE_LALT])
     {
         if (keyboardState[Config::Key_LeftStickUp])
             state->Gamepad.sThumbLY = 32767;

@@ -23,9 +23,14 @@
 */
 
 #include <algorithm>
+#include <cctype>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <cstdio>
+#include <string>
 #include <vector>
 #include <zstd.h>
 

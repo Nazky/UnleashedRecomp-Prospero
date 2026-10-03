@@ -527,6 +527,13 @@ void MessageWindow::Draw()
                     ResetSelection();
                     Game_PlaySound("sys_actstg_pausewinopen");
                 }
+                else if (!g_isControlsVisible && g_isDeclined && g_cancelButtonIndex >= 0 && g_cancelButtonIndex < (int)g_buttons.size())
+                {
+                    g_result = g_cancelButtonIndex;
+
+                    Game_PlaySound("sys_actstg_pausecansel");
+                    MessageWindow::Close();
+                }
             }
         }
         else

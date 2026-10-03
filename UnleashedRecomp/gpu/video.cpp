@@ -1808,6 +1808,7 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
 
     LoadEmbeddedResources();
 
+#if !defined(__PROSPERO__)
     constexpr uint64_t LowEndMemoryLimit = 2048ULL * 1024ULL * 1024ULL;
     RenderDeviceDescription deviceDescription = g_device->getDescription();
     bool lowEndType = deviceDescription.type != RenderDeviceType::UNKNOWN && deviceDescription.type != RenderDeviceType::DISCRETE;
@@ -1819,6 +1820,7 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
         // Checking for UMA on D3D12 seems to be a reliable way to detect integrated GPUs.
         ApplyLowEndDefaults();
     }
+#endif
 
     const RenderSampleCounts colourSampleCount = g_device->getSampleCountsSupported(RenderFormat::R16G16B16A16_FLOAT);
     const RenderSampleCounts depthSampleCount  = g_device->getSampleCountsSupported(RenderFormat::D32_FLOAT);
@@ -2538,6 +2540,10 @@ static void DrawFPS()
 
 static void DrawImGui()
 {
+#if defined(__PROSPERO__)
+    extern void PumpPs5PadEvents();
+    PumpPs5PadEvents();
+#endif
     ImGui_ImplSDL2_NewFrame();
 
     auto& io = ImGui::GetIO();

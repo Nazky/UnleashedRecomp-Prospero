@@ -2,6 +2,10 @@
 #include <install/installer.h>
 #include <os/logger.h>
 #include <user/paths.h>
+#if defined(__PROSPERO__)
+#include <cstdio>
+#include <sys/stat.h>
+#endif
 
 bool PersistentStorageManager::ShouldDisplayDLCMessage(bool setOffendingDLCFlag)
 {
@@ -40,16 +44,61 @@ bool PersistentStorageManager::LoadBinary()
 
     auto dataPath = GetDataPath(true);
 
-    if (!std::filesystem::exists(dataPath))
+#if defined(__PROSPERO__)
+    FILE* fp = fopen(dataPath.string().c_str(), "rb");
+    if (!fp)
+    {
+        dataPath = GetDataPath(false);
+        fp = fopen(dataPath.string().c_str(), "rb");
+        if (!fp)
+            return true;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    long fileSize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    if (fileSize != (long)sizeof(PersistentData))
+    {
+        fclose(fp);
+        BinStatus = EExtBinStatus::BadFileSize;
+        return false;
+    }
+
+    PersistentData data{};
+    if (fread(&data, 1, sizeof(data), fp) != sizeof(data))
+    {
+        fclose(fp);
+        BinStatus = EExtBinStatus::IOError;
+        return false;
+    }
+    fclose(fp);
+
+    if (!data.VerifySignature())
+    {
+        BinStatus = EExtBinStatus::BadSignature;
+        return false;
+    }
+
+    if (!data.VerifyVersion())
+    {
+        BinStatus = EExtBinStatus::BadVersion;
+        return false;
+    }
+
+    memcpy(&Data, &data, sizeof(PersistentData));
+    return true;
+#else
+    std::error_code ec;
+    if (!std::filesystem::exists(dataPath, ec))
     {
         // Try loading base persistent data as fallback.
         dataPath = GetDataPath(false);
 
-        if (!std::filesystem::exists(dataPath))
+        if (!std::filesystem::exists(dataPath, ec))
             return true;
     }
 
-    std::error_code ec;
     auto fileSize = std::filesystem::file_size(dataPath, ec);
     auto dataSize = sizeof(PersistentData);
 
@@ -94,13 +143,35 @@ bool PersistentStorageManager::LoadBinary()
     memcpy(&Data, &data, dataSize);
 
     return true;
+#endif
 }
 
 bool PersistentStorageManager::SaveBinary()
 {
     LOGN("Saving persistent storage binary...");
 
-    std::ofstream file(GetDataPath(true), std::ios::binary);
+    auto dataPath = GetDataPath(true);
+#if defined(__PROSPERO__)
+    mkdir(GetUserPath().string().c_str(), 0777);
+    mkdir(dataPath.parent_path().string().c_str(), 0777);
+
+    FILE* fp = fopen(dataPath.string().c_str(), "wb");
+    if (!fp)
+    {
+        LOGN_ERROR("Failed to write persistent storage binary.");
+        return false;
+    }
+
+    fwrite(&Data, 1, sizeof(PersistentData), fp);
+    fflush(fp);
+    fclose(fp);
+
+    BinStatus = EExtBinStatus::Success;
+    return true;
+#else
+    std::error_code ec;
+    std::filesystem::create_directories(dataPath.parent_path(), ec);
+    std::ofstream file(dataPath, std::ios::binary);
 
     if (!file)
     {
@@ -114,4 +185,5 @@ bool PersistentStorageManager::SaveBinary()
     BinStatus = EExtBinStatus::Success;
 
     return true;
+#endif
 }

@@ -41,6 +41,34 @@ static std::array<std::string_view, 3> g_D3D12RequiredModules =
 };
 #endif
 
+#if defined(__PROSPERO__)
+#include <sys/stat.h>
+extern "C" int sceSystemServiceLoadExec(const char* path, char* const argv[]);
+extern "C" void catchReturnFromMain(int status)
+{
+    (void)status;
+    sceSystemServiceLoadExec("exit", nullptr);
+    for (;;)
+        usleep(100000);
+}
+[[noreturn]] static void PS5Exit(int status)
+{
+    catchReturnFromMain(status);
+    __builtin_unreachable();
+}
+extern "C" int ps5_ffs(int i)
+{
+    return __builtin_ffs(i);
+}
+extern "C" time_t ps5_timegm(struct tm* t)
+{
+    return mktime(t);
+}
+#define UNLEASHED_EXIT(code) PS5Exit(code)
+#else
+#define UNLEASHED_EXIT(code) std::_Exit(code)
+#endif
+
 const size_t XMAIOBegin = 0x7FEA0000;
 const size_t XMAIOEnd = XMAIOBegin + 0x0000FFFF;
 
@@ -64,7 +92,7 @@ void KiSystemStartup()
     if (g_memory.base == nullptr)
     {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, GameWindow::GetTitle(), Localise("System_MemoryAllocationFailed").c_str(), GameWindow::s_pWindow);
-        std::_Exit(1);
+        UNLEASHED_EXIT(1);
     }
 
     g_userHeap.Init();
@@ -77,11 +105,16 @@ void KiSystemStartup()
     XamRegisterContent(updateContent, updatePath);
 
     const auto saveFilePath = GetSaveFilePath(true);
-    bool saveFileExists = std::filesystem::exists(saveFilePath);
+    std::error_code saveEc;
+    bool saveFileExists = std::filesystem::exists(saveFilePath, saveEc);
 
     if (!saveFileExists)
     {
         // Copy base save data to modded save as fallback.
+#if defined(__PROSPERO__)
+        mkdir(GetUserPath().string().c_str(), 0777);
+        mkdir(saveFilePath.parent_path().string().c_str(), 0777);
+#endif
         std::error_code ec;
         std::filesystem::create_directories(saveFilePath.parent_path(), ec);
 
@@ -108,7 +141,8 @@ void KiSystemStartup()
     std::error_code ec;
     for (auto& file : std::filesystem::directory_iterator(GetGamePath() / "dlc", ec))
     {
-        if (file.is_directory())
+        std::error_code dirEc;
+        if (file.is_directory(dirEc))
         {
             std::u8string fileNameU8 = file.path().filename().u8string();
             std::u8string filePathU8 = file.path().u8string();
@@ -192,10 +226,17 @@ void init()
 }
 #endif
 
+#if defined(__PROSPERO__)
+extern "C" int sceSystemServiceHideSplashScreen();
+#endif
+
 int main(int argc, char *argv[])
 {
 #ifdef _WIN32
     timeBeginPeriod(1);
+#endif
+#if defined(__PROSPERO__)
+    (void)sceSystemServiceHideSplashScreen();
 #endif
 
     os::process::CheckConsole();
@@ -291,7 +332,7 @@ int main(int argc, char *argv[])
         }
 
         SDL_ShowSimpleMessageBox(messageBoxStyle, GameWindow::GetTitle(), resultText, GameWindow::s_pWindow);
-        std::_Exit(int(journal.lastResult));
+        UNLEASHED_EXIT(int(journal.lastResult));
     }
 
 #if defined(_WIN32) && defined(UNLEASHED_RECOMP_D3D12)
@@ -302,11 +343,12 @@ int main(int argc, char *argv[])
             char text[512];
             snprintf(text, sizeof(text), Localise("System_Win32_MissingDLLs").c_str(), dll.data());
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, GameWindow::GetTitle(), text, GameWindow::s_pWindow);
-            std::_Exit(1);
+            UNLEASHED_EXIT(1);
         }
     }
 #endif
 
+#if !defined(__PROSPERO__)
     // Check the time since the last time an update was checked. Store the new time if the difference is more than six hours.
     constexpr double TimeBetweenUpdateChecksInSeconds = 6 * 60 * 60;
     time_t timeNow = std::time(nullptr);
@@ -318,6 +360,7 @@ int main(int argc, char *argv[])
         Config::LastChecked = timeNow;
         Config::Save();
     }
+#endif
 
     if (Config::ShowConsole)
         os::process::ShowConsole();
@@ -332,12 +375,12 @@ int main(int argc, char *argv[])
         if (!Video::CreateHostDevice(sdlVideoDriver, graphicsApiRetry))
         {
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, GameWindow::GetTitle(), Localise("Video_BackendError").c_str(), GameWindow::s_pWindow);
-            std::_Exit(1);
+            UNLEASHED_EXIT(1);
         }
 
         if (!InstallerWizard::Run(GetGamePath(), isGameInstalled && forceDLCInstaller))
         {
-            std::_Exit(0);
+            UNLEASHED_EXIT(0);
         }
     }
 
@@ -352,11 +395,17 @@ int main(int argc, char *argv[])
 
     if (!runInstallerWizard)
     {
+#if defined(__PROSPERO__)
+        (void)sceSystemServiceHideSplashScreen();
+#endif
         if (!Video::CreateHostDevice(sdlVideoDriver, graphicsApiRetry))
         {
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, GameWindow::GetTitle(), Localise("Video_BackendError").c_str(), GameWindow::s_pWindow);
-            std::_Exit(1);
+            UNLEASHED_EXIT(1);
         }
+#if defined(__PROSPERO__)
+        (void)sceSystemServiceHideSplashScreen();
+#endif
     }
 
     Video::StartPipelinePrecompilation();

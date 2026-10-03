@@ -3,6 +3,10 @@
 #include <kernel/memory.h>
 #include <ui/achievement_overlay.h>
 #include <user/config.h>
+#if defined(__PROSPERO__)
+#include <cstdio>
+#include <sys/stat.h>
+#endif
 
 #define NUM_RECORDS sizeof(AchievementManager::Data.Records) / sizeof(AchievementData::AchRecord)
 
@@ -113,16 +117,67 @@ bool AchievementManager::LoadBinary()
 
     auto dataPath = GetDataPath(true);
 
-    if (!std::filesystem::exists(dataPath))
+#if defined(__PROSPERO__)
+    FILE* fp = fopen(dataPath.string().c_str(), "rb");
+    if (!fp)
+    {
+        dataPath = GetDataPath(false);
+        fp = fopen(dataPath.string().c_str(), "rb");
+        if (!fp)
+            return true;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    long fileSize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    if (fileSize != (long)sizeof(AchievementData))
+    {
+        fclose(fp);
+        BinStatus = EAchBinStatus::BadFileSize;
+        return false;
+    }
+
+    AchievementData data{};
+    if (fread(&data, 1, sizeof(data), fp) != sizeof(data))
+    {
+        fclose(fp);
+        BinStatus = EAchBinStatus::IOError;
+        return false;
+    }
+    fclose(fp);
+
+    if (!data.VerifySignature())
+    {
+        BinStatus = EAchBinStatus::BadSignature;
+        return false;
+    }
+
+    if (!data.VerifyVersion())
+    {
+        BinStatus = EAchBinStatus::BadVersion;
+        return false;
+    }
+
+    if (!data.VerifyChecksum())
+    {
+        BinStatus = EAchBinStatus::BadChecksum;
+        return false;
+    }
+
+    memcpy(&Data, &data, sizeof(AchievementData));
+    return true;
+#else
+    std::error_code ec;
+    if (!std::filesystem::exists(dataPath, ec))
     {
         // Try loading base achievement data as fallback.
         dataPath = GetDataPath(false);
 
-        if (!std::filesystem::exists(dataPath))
+        if (!std::filesystem::exists(dataPath, ec))
             return true;
     }
 
-    std::error_code ec;
     auto fileSize = std::filesystem::file_size(dataPath, ec);
     auto dataSize = sizeof(AchievementData);
 
@@ -175,6 +230,7 @@ bool AchievementManager::LoadBinary()
     memcpy(&Data, &data, dataSize);
 
     return true;
+#endif
 }
 
 bool AchievementManager::SaveBinary(bool ignoreStatus)
@@ -187,7 +243,29 @@ bool AchievementManager::SaveBinary(bool ignoreStatus)
 
     LOGN("Saving achievements...");
 
-    std::ofstream file(GetDataPath(true), std::ios::binary);
+    auto dataPath = GetDataPath(true);
+#if defined(__PROSPERO__)
+    mkdir(GetUserPath().string().c_str(), 0777);
+    mkdir(dataPath.parent_path().string().c_str(), 0777);
+
+    FILE* fp = fopen(dataPath.string().c_str(), "wb");
+    if (!fp)
+    {
+        LOGN_ERROR("Failed to write achievement data.");
+        return false;
+    }
+
+    Data.Checksum = Data.CalculateChecksum();
+    fwrite(&Data, 1, sizeof(AchievementData), fp);
+    fflush(fp);
+    fclose(fp);
+
+    BinStatus = EAchBinStatus::Success;
+    return true;
+#else
+    std::error_code ec;
+    std::filesystem::create_directories(dataPath.parent_path(), ec);
+    std::ofstream file(dataPath, std::ios::binary);
 
     if (!file)
     {
@@ -203,4 +281,5 @@ bool AchievementManager::SaveBinary(bool ignoreStatus)
     BinStatus = EAchBinStatus::Success;
 
     return true;
+#endif
 }

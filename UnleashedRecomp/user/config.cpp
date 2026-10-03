@@ -1,7 +1,12 @@
 #include "config.h"
+#include <app.h>
 #include <os/logger.h>
 #include <ui/game_window.h>
 #include <user/paths.h>
+#if defined(__PROSPERO__)
+#include <cstdio>
+#include <sys/stat.h>
+#endif
 
 std::vector<IConfigDef*> g_configDefinitions;
 
@@ -751,6 +756,16 @@ std::filesystem::path Config::GetConfigPath()
 
 void Config::CreateCallbacks()
 {
+    Config::Language.Callback = [](ConfigDef<ELanguage>* def)
+    {
+        App::s_language = def->Value;
+    };
+
+    Config::Language.ApplyCallback = [](ConfigDef<ELanguage>* def)
+    {
+        App::s_language = def->Value;
+    };
+
     Config::WindowSize.LockCallback = [](ConfigDef<int32_t>* def)
     {
         // Try matching the current window size with a known configuration.
@@ -760,11 +775,16 @@ void Config::CreateCallbacks()
 
     Config::WindowSize.ApplyCallback = [](ConfigDef<int32_t>* def)
     {
+        if (!GameWindow::s_pWindow)
+            return;
+
         auto displayModes = GameWindow::GetDisplayModes();
+        if (displayModes.empty())
+            return;
 
         // Use largest supported resolution if overflowed.
-        if (def->Value >= displayModes.size())
-            def->Value = displayModes.size() - 1;
+        if (def->Value < 0 || (size_t)def->Value >= displayModes.size())
+            def->Value = (int32_t)displayModes.size() - 1;
 
         auto& mode = displayModes[def->Value];
         auto centre = SDL_WINDOWPOS_CENTERED_DISPLAY(GameWindow::GetDisplay());
@@ -774,11 +794,17 @@ void Config::CreateCallbacks()
 
     Config::Monitor.Callback = [](ConfigDef<int32_t>* def)
     {
+        if (!GameWindow::s_pWindow)
+            return;
+
         GameWindow::SetDisplay(def->Value);
     };
 
     Config::Fullscreen.Callback = [](ConfigDef<bool>* def)
     {
+        if (!GameWindow::s_pWindow)
+            return;
+
         GameWindow::SetFullscreen(def->Value);
         GameWindow::SetDisplay(Config::Monitor);
     };
@@ -788,6 +814,39 @@ void Config::CreateCallbacks()
         def->Value = std::clamp(def->Value, 0.25f, 2.0f);
     };
 }
+
+#if defined(__PROSPERO__)
+extern "C" int sceSystemServiceParamGetInt(int paramId, int* value);
+
+static ELanguage DetectPS5SystemLanguage()
+{
+    int sysLang = 1; // Default to English (US)
+    if (sceSystemServiceParamGetInt(1 /* SCE_SYSTEM_SERVICE_PARAM_ID_LANG */, &sysLang) == 0)
+    {
+        switch (sysLang)
+        {
+            case 0:  // SCE_SYSTEM_PARAM_LANG_JAPANESE
+                return ELanguage::Japanese;
+            case 1:  // SCE_SYSTEM_PARAM_LANG_ENGLISH_US
+            case 18: // SCE_SYSTEM_PARAM_LANG_ENGLISH_GB
+                return ELanguage::English;
+            case 2:  // SCE_SYSTEM_PARAM_LANG_FRENCH
+            case 22: // SCE_SYSTEM_PARAM_LANG_FRENCH_CA
+                return ELanguage::French;
+            case 3:  // SCE_SYSTEM_PARAM_LANG_SPANISH
+            case 20: // SCE_SYSTEM_PARAM_LANG_SPANISH_LA
+                return ELanguage::Spanish;
+            case 4:  // SCE_SYSTEM_PARAM_LANG_GERMAN
+                return ELanguage::German;
+            case 5:  // SCE_SYSTEM_PARAM_LANG_ITALIAN
+                return ELanguage::Italian;
+            default:
+                break;
+        }
+    }
+    return ELanguage::English;
+}
+#endif
 
 void Config::Load()
 {
@@ -799,8 +858,93 @@ void Config::Load()
 
     auto configPath = GetConfigPath();
 
-    if (!std::filesystem::exists(configPath))
+#if defined(__PROSPERO__)
+    ELanguage sysLanguage = DetectPS5SystemLanguage();
+    Config::Language.DefaultValue = sysLanguage;
+
+    auto applyFirstBootDefaults = [&]()
     {
+        Config::Language.Value = sysLanguage;
+        if (sysLanguage == ELanguage::Japanese)
+        {
+            Config::VoiceLanguage.DefaultValue = EVoiceLanguage::Japanese;
+            Config::VoiceLanguage.Value = EVoiceLanguage::Japanese;
+        }
+        Config::AchievementNotifications = true;
+        Config::AllowBackgroundInput = false;
+        Config::MusicAttenuation = false;
+        App::s_language = Config::Language;
+        Config::Save();
+    };
+
+    FILE* fp = fopen(configPath.string().c_str(), "rb");
+    if (!fp)
+    {
+        applyFirstBootDefaults();
+        return;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    long fileSize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    if (fileSize <= 0)
+    {
+        fclose(fp);
+        applyFirstBootDefaults();
+        return;
+    }
+
+    std::string configData((size_t)fileSize, '\0');
+    size_t bytesRead = fread(configData.data(), 1, (size_t)fileSize, fp);
+    fclose(fp);
+    configData.resize(bytesRead);
+
+    if (configData.empty())
+    {
+        applyFirstBootDefaults();
+        return;
+    }
+
+    try
+    {
+        toml::parse_result toml = toml::parse(std::string_view(configData));
+
+        for (auto def : g_configDefinitions)
+        {
+            def->ReadValue(toml);
+
+#if _DEBUG
+            LOGFN_UTILITY("{} (0x{:X})", def->GetDefinition().c_str(), (intptr_t)def->GetValue());
+#endif
+        }
+    }
+    catch (toml::parse_error& err)
+    {
+        LOGFN_ERROR("Failed to parse configuration: {}", err.what());
+    }
+
+    auto restoreMarkerPath = GetUserPath() / ".ach_notif_restored";
+    if (FILE* markerFp = fopen(restoreMarkerPath.string().c_str(), "rb"))
+    {
+        fclose(markerFp);
+    }
+    else
+    {
+        Config::AchievementNotifications = true;
+        if (FILE* createFp = fopen(restoreMarkerPath.string().c_str(), "wb"))
+            fclose(createFp);
+        Config::Save();
+    }
+
+    Config::AllowBackgroundInput = false;
+    Config::MusicAttenuation = false;
+    App::s_language = Config::Language;
+#else
+    std::error_code ec;
+    if (!std::filesystem::exists(configPath, ec))
+    {
+        App::s_language = Config::Language;
         Config::Save();
         return;
     }
@@ -826,6 +970,9 @@ void Config::Load()
     {
         LOGFN_ERROR("Failed to parse configuration: {}", err.what());
     }
+
+    App::s_language = Config::Language;
+#endif
 }
 
 void Config::Save()
@@ -834,8 +981,13 @@ void Config::Save()
 
     auto userPath = GetUserPath();
 
-    if (!std::filesystem::exists(userPath))
-        std::filesystem::create_directory(userPath);
+#if defined(__PROSPERO__)
+    mkdir(userPath.string().c_str(), 0777);
+#else
+    std::error_code ec;
+    if (!std::filesystem::exists(userPath, ec))
+        std::filesystem::create_directories(userPath, ec);
+#endif
 
     std::string result;
     std::string section;
@@ -858,6 +1010,19 @@ void Config::Save()
         result += tomlDef + '\n';
     }
 
+#if defined(__PROSPERO__)
+    FILE* outFp = fopen(GetConfigPath().string().c_str(), "wb");
+    if (outFp)
+    {
+        fwrite(result.data(), 1, result.size(), outFp);
+        fflush(outFp);
+        fclose(outFp);
+    }
+    else
+    {
+        LOGN_ERROR("Failed to write configuration.");
+    }
+#else
     std::ofstream out(GetConfigPath());
 
     if (out.is_open())
@@ -869,4 +1034,5 @@ void Config::Save()
     {
         LOGN_ERROR("Failed to write configuration.");
     }
+#endif
 }

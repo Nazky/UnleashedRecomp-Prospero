@@ -1,6 +1,8 @@
 #include "installer.h"
 
 #include <xxh3.h>
+#include <user/paths.h>
+#include <xex_patcher.h>
 
 #include "directory_file_system.h"
 #include "iso_file_system.h"
@@ -314,13 +316,58 @@ bool Installer::checkGameInstall(const std::filesystem::path &baseDirectory, std
 {
     modulePath = baseDirectory / PatchedDirectory / GameExecutableFile;
 
-    if (!std::filesystem::exists(modulePath))
+#if defined(__PROSPERO__)
+    std::error_code ec;
+    if (!std::filesystem::exists(modulePath, ec))
+    {
+        auto userPatched = GetUserPath() / PatchedDirectory / GameExecutableFile;
+        if (std::filesystem::exists(userPatched, ec))
+        {
+            modulePath = userPatched;
+        }
+        else if (std::filesystem::exists(baseDirectory / GameDirectory / GameExecutableFile, ec) &&
+                 std::filesystem::exists(baseDirectory / UpdateDirectory / UpdateExecutablePatchFile, ec))
+        {
+            std::filesystem::path targetPatched = modulePath;
+            std::filesystem::create_directories(targetPatched.parent_path(), ec);
+            if (ec || XexPatcher::apply(baseDirectory / GameDirectory / GameExecutableFile,
+                                        baseDirectory / UpdateDirectory / UpdateExecutablePatchFile,
+                                        targetPatched) != XexPatcher::Result::Success)
+            {
+                ec.clear();
+                targetPatched = userPatched;
+                std::filesystem::create_directories(targetPatched.parent_path(), ec);
+                if (XexPatcher::apply(baseDirectory / GameDirectory / GameExecutableFile,
+                                      baseDirectory / UpdateDirectory / UpdateExecutablePatchFile,
+                                      targetPatched) == XexPatcher::Result::Success)
+                {
+                    modulePath = targetPatched;
+                }
+            }
+        }
+    }
+
+    if (std::filesystem::exists(modulePath, ec) &&
+        std::filesystem::exists(baseDirectory / GameDirectory / GameExecutableFile, ec))
+    {
+        return true;
+    }
+
+    if (std::filesystem::exists(baseDirectory / GameDirectory / GameExecutableFile, ec))
+    {
+        modulePath = baseDirectory / GameDirectory / GameExecutableFile;
+        return true;
+    }
+#endif
+
+    std::error_code checkEc;
+    if (!std::filesystem::exists(modulePath, checkEc))
         return false;
 
-    if (!std::filesystem::exists(baseDirectory / UpdateDirectory / UpdateExecutablePatchFile))
+    if (!std::filesystem::exists(baseDirectory / UpdateDirectory / UpdateExecutablePatchFile, checkEc))
         return false;
 
-    if (!std::filesystem::exists(baseDirectory / GameDirectory / GameExecutableFile))
+    if (!std::filesystem::exists(baseDirectory / GameDirectory / GameExecutableFile, checkEc))
         return false;
 
     return true;
@@ -328,20 +375,21 @@ bool Installer::checkGameInstall(const std::filesystem::path &baseDirectory, std
 
 bool Installer::checkDLCInstall(const std::filesystem::path &baseDirectory, DLC dlc)
 {
+    std::error_code ec;
     switch (dlc)
     {
     case DLC::Spagonia:
-        return std::filesystem::exists(baseDirectory / SpagoniaDirectory / DLCValidationFile);
+        return std::filesystem::exists(baseDirectory / SpagoniaDirectory / DLCValidationFile, ec);
     case DLC::Chunnan:
-        return std::filesystem::exists(baseDirectory / ChunnanDirectory / DLCValidationFile);
+        return std::filesystem::exists(baseDirectory / ChunnanDirectory / DLCValidationFile, ec);
     case DLC::Mazuri:
-        return std::filesystem::exists(baseDirectory / MazuriDirectory / DLCValidationFile);
+        return std::filesystem::exists(baseDirectory / MazuriDirectory / DLCValidationFile, ec);
     case DLC::Holoska:
-        return std::filesystem::exists(baseDirectory / HoloskaDirectory / DLCValidationFile);
+        return std::filesystem::exists(baseDirectory / HoloskaDirectory / DLCValidationFile, ec);
     case DLC::ApotosShamar:
-        return std::filesystem::exists(baseDirectory / ApotosShamarDirectory / DLCValidationFile);
+        return std::filesystem::exists(baseDirectory / ApotosShamarDirectory / DLCValidationFile, ec);
     case DLC::EmpireCityAdabat:
-        return std::filesystem::exists(baseDirectory / EmpireCityAdabatDirectory / DLCValidationFile);
+        return std::filesystem::exists(baseDirectory / EmpireCityAdabatDirectory / DLCValidationFile, ec);
     default:
         return false;
     }

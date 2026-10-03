@@ -43,6 +43,9 @@ GuestThreadContext::~GuestThreadContext()
 #ifdef USE_PTHREAD
 static size_t GetStackSize()
 {
+#if defined(__PROSPERO__)
+    return 2 * 1024 * 1024;
+#else
     // Cache as this should not change.
     static size_t stackSize = 0;
     if (stackSize == 0)
@@ -62,6 +65,7 @@ static size_t GetStackSize()
         }
     }
     return stackSize;
+#endif
 }
 
 static void* GuestThreadFunc(void* arg)

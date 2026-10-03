@@ -1,2 +1,1 @@
-/version.h
-/version.cpp
+# Track version.h and version.cpp for standalone builds

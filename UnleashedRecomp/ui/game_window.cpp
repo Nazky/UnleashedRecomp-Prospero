@@ -5,7 +5,9 @@
 #include <os/version.h>
 #include <app.h>
 #include <sdl_listener.h>
+#if !defined(__PROSPERO__)
 #include <SDL_syswm.h>
+#endif
 
 #if _WIN32
 #include <dwmapi.h>
@@ -132,9 +134,15 @@ int Window_OnSDLEvent(void*, SDL_Event* event)
                 case SDL_WINDOWEVENT_RESIZED:
                     m_isResizing = true;
                     Config::WindowSize = -1;
+#if defined(__PROSPERO__)
+                    GameWindow::s_width = 3840;
+                    GameWindow::s_height = 2160;
+#else
                     GameWindow::s_width = event->window.data1;
                     GameWindow::s_height = event->window.data2;
-                    GameWindow::SetTitle(fmt::format("{} - [{}x{}]", GameWindow::GetTitle(), GameWindow::s_width, GameWindow::s_height).c_str());
+#endif
+                    if (GameWindow::s_pWindow)
+                        GameWindow::SetTitle(fmt::format("{} - [{}x{}]", GameWindow::GetTitle(), GameWindow::s_width, GameWindow::s_height).c_str());
                     break;
 
                 case SDL_WINDOWEVENT_MOVED:
@@ -159,6 +167,10 @@ void GameWindow::Init(const char* sdlVideoDriver)
 {
 #ifdef __linux__
     SDL_SetHint("SDL_APP_ID", "io.github.hedge_dev.unleashedrecomp");
+#endif
+#if defined(__PROSPERO__)
+    setenv("SDL_VIDEODRIVER", "dummy", 1);
+    sdlVideoDriver = "dummy";
 #endif
 
     if (SDL_VideoInit(sdlVideoDriver) != 0 && sdlVideoDriver)
@@ -191,6 +203,10 @@ void GameWindow::Init(const char* sdlVideoDriver)
         GameWindow::ResetDimensions();
 
     s_pWindow = SDL_CreateWindow("Unleashed Recompiled", s_x, s_y, s_width, s_height, GetWindowFlags());
+#if defined(__PROSPERO__)
+    s_width = 3840;
+    s_height = 2160;
+#endif
 
     if (IsFullscreen())
         SDL_ShowCursor(SDL_DISABLE);
@@ -201,9 +217,11 @@ void GameWindow::Init(const char* sdlVideoDriver)
 
     SDL_SetWindowMinimumSize(s_pWindow, MIN_WIDTH, MIN_HEIGHT);
 
+#if !defined(__PROSPERO__)
     SDL_SysWMinfo info;
     SDL_VERSION(&info.version);
     SDL_GetWindowWMInfo(s_pWindow, &info);
+#endif
 
 #if defined(_WIN32)
     s_renderWindow = info.info.win.window;
@@ -213,6 +231,8 @@ void GameWindow::Init(const char* sdlVideoDriver)
         DWM_WINDOW_CORNER_PREFERENCE wcp = DWMWCP_DONOTROUND;
         DwmSetWindowAttribute(s_renderWindow, DWMWA_WINDOW_CORNER_PREFERENCE, &wcp, sizeof(wcp));
     }
+#elif defined(__PROSPERO__)
+    s_renderWindow = { s_pWindow, 3840, 2160 };
 #elif defined(SDL_VULKAN_ENABLED)
     s_renderWindow = s_pWindow;
 #elif defined(__linux__)
@@ -325,11 +345,26 @@ void GameWindow::SetTitleBarColour()
 
 bool GameWindow::IsFullscreen()
 {
+#if defined(__PROSPERO__)
+    return true;
+#else
+    if (!s_pWindow)
+        return Config::Fullscreen;
     return SDL_GetWindowFlags(s_pWindow) & SDL_WINDOW_FULLSCREEN_DESKTOP;
+#endif
 }
 
 bool GameWindow::SetFullscreen(bool isEnabled)
 {
+#if defined(__PROSPERO__)
+    (void)isEnabled;
+    s_width = 3840;
+    s_height = 2160;
+    return true;
+#else
+    if (!s_pWindow)
+        return isEnabled;
+
     if (isEnabled)
     {
         SDL_SetWindowFullscreen(s_pWindow, SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -345,6 +380,7 @@ bool GameWindow::SetFullscreen(bool isEnabled)
     }
 
     return isEnabled;
+#endif
 }
     
 void GameWindow::SetFullscreenCursorVisibility(bool isVisible)
@@ -394,29 +430,51 @@ SDL_Rect GameWindow::GetDimensions()
 
 void GameWindow::GetSizeInPixels(int *w, int *h)
 {
+#if defined(__PROSPERO__)
+    if (w) *w = s_width > 0 ? s_width : 3840;
+    if (h) *h = s_height > 0 ? s_height : 2160;
+#else
     SDL_GetWindowSizeInPixels(s_pWindow, w, h);
+#endif
 }
 
 void GameWindow::SetDimensions(int w, int h, int x, int y)
 {
+#if defined(__PROSPERO__)
+    (void)w;
+    (void)h;
+    (void)x;
+    (void)y;
+    s_width = 3840;
+    s_height = 2160;
+#else
     s_width = w;
     s_height = h;
     s_x = x;
     s_y = y;
+
+    if (!s_pWindow)
+        return;
 
     SDL_SetWindowSize(s_pWindow, w, h);
     SDL_ResizeEvent(s_pWindow, w, h);
 
     SDL_SetWindowPosition(s_pWindow, x, y);
     SDL_MoveEvent(s_pWindow, x, y);
+#endif
 }
 
 void GameWindow::ResetDimensions()
 {
     s_x = SDL_WINDOWPOS_CENTERED;
     s_y = SDL_WINDOWPOS_CENTERED;
+#if defined(__PROSPERO__)
+    s_width = 3840;
+    s_height = 2160;
+#else
     s_width = DEFAULT_WIDTH;
     s_height = DEFAULT_HEIGHT;
+#endif
 
     Config::WindowX = s_x;
     Config::WindowY = s_y;
@@ -434,7 +492,7 @@ uint32_t GameWindow::GetWindowFlags()
     if (Config::Fullscreen)
         flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 
-#ifdef SDL_VULKAN_ENABLED
+#if defined(SDL_VULKAN_ENABLED) && !defined(__PROSPERO__)
     flags |= SDL_WINDOW_VULKAN;
 #endif
 
@@ -456,11 +514,21 @@ int GameWindow::GetDisplayCount()
 
 int GameWindow::GetDisplay()
 {
-    return SDL_GetWindowDisplayIndex(s_pWindow);
+    if (!s_pWindow)
+        return 0;
+
+    auto idx = SDL_GetWindowDisplayIndex(s_pWindow);
+    return idx < 0 ? 0 : idx;
 }
 
 void GameWindow::SetDisplay(int displayIndex)
 {
+#if defined(__PROSPERO__)
+    (void)displayIndex;
+#else
+    if (!s_pWindow)
+        return;
+
     if (!IsFullscreen())
         return;
 
@@ -481,11 +549,22 @@ void GameWindow::SetDisplay(int displayIndex)
     {
         ResetDimensions();
     }
+#endif
 }
 
 std::vector<SDL_DisplayMode> GameWindow::GetDisplayModes(bool ignoreInvalidModes, bool ignoreRefreshRates)
 {
     auto result = std::vector<SDL_DisplayMode>();
+#if defined(__PROSPERO__)
+    (void)ignoreInvalidModes;
+    (void)ignoreRefreshRates;
+    SDL_DisplayMode mode{};
+    mode.w = 3840;
+    mode.h = 2160;
+    mode.refresh_rate = 60;
+    result.push_back(mode);
+    return result;
+#else
     auto uniqueResolutions = std::set<std::pair<int, int>>();
     auto displayIndex = GetDisplay();
     auto modeCount = SDL_GetNumDisplayModes(displayIndex);
@@ -531,6 +610,7 @@ std::vector<SDL_DisplayMode> GameWindow::GetDisplayModes(bool ignoreInvalidModes
     }
 
     return result;
+#endif
 }
 
 int GameWindow::FindNearestDisplayMode()

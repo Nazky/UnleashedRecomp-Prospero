@@ -7,6 +7,191 @@
 #include <kernel/xdm.h>
 #include <app.h>
 
+#if defined(__PROSPERO__)
+extern "C"
+{
+    int sceUserServiceInitialize(const void* params);
+    int sceUserServiceGetInitialUser(int32_t* userId);
+    int scePadInit(void);
+    int scePadOpen(int32_t userId, int32_t type, int32_t index, const void* param);
+    int scePadGetHandle(int32_t userId, int32_t type, int32_t index);
+    int scePadReadState(int32_t handle, void* data);
+}
+
+struct Ps5ScePadData
+{
+    uint32_t buttons;
+    uint8_t leftStickX;
+    uint8_t leftStickY;
+    uint8_t rightStickX;
+    uint8_t rightStickY;
+    uint8_t analogL2;
+    uint8_t analogR2;
+    uint16_t padding;
+    float orientation[4];
+    float acceleration[3];
+    float angularVelocity[3];
+    uint8_t touchData[32];
+    uint8_t connected;
+    uint64_t timestamp;
+    uint8_t ext[64];
+};
+
+static int32_t s_ps5PadHandle = -1;
+
+static void InitPs5Pad()
+{
+    if (s_ps5PadHandle >= 0)
+        return;
+
+    sceUserServiceInitialize(nullptr);
+    scePadInit();
+
+    int32_t userId = -1;
+    if (sceUserServiceGetInitialUser(&userId) != 0 || userId < 0)
+        userId = 1;
+
+    s_ps5PadHandle = scePadOpen(userId, 0, 0, nullptr);
+    if (s_ps5PadHandle < 0)
+        s_ps5PadHandle = scePadGetHandle(userId, 0, 0);
+    if (s_ps5PadHandle < 0)
+    {
+        static const int32_t kFallbackIds[] = { 1, 0, 0x10000000, 0xFF };
+        for (int32_t uid : kFallbackIds)
+        {
+            s_ps5PadHandle = scePadOpen(uid, 0, 0, nullptr);
+            if (s_ps5PadHandle < 0)
+                s_ps5PadHandle = scePadGetHandle(uid, 0, 0);
+            if (s_ps5PadHandle >= 0)
+                break;
+        }
+    }
+
+    if (s_ps5PadHandle >= 0)
+    {
+        hid::g_inputDevice = hid::EInputDevice::PlayStation;
+        hid::g_inputDeviceController = hid::EInputDevice::PlayStation;
+        hid::g_inputDeviceExplicit = hid::EInputDeviceExplicit::DualSense;
+        LOGFN("Opened PS5 DualSense controller via scePad (handle={})", s_ps5PadHandle);
+    }
+}
+
+static bool PollPs5Pad(XAMINPUT_GAMEPAD& pad)
+{
+    if (s_ps5PadHandle < 0)
+        InitPs5Pad();
+    if (s_ps5PadHandle < 0)
+        return false;
+
+    Ps5ScePadData data{};
+    if (scePadReadState(s_ps5PadHandle, &data) != 0)
+        return false;
+
+    pad.wButtons = 0;
+    if (data.buttons & 0x00000010u) pad.wButtons |= XAMINPUT_GAMEPAD_DPAD_UP;
+    if (data.buttons & 0x00000040u) pad.wButtons |= XAMINPUT_GAMEPAD_DPAD_DOWN;
+    if (data.buttons & 0x00000080u) pad.wButtons |= XAMINPUT_GAMEPAD_DPAD_LEFT;
+    if (data.buttons & 0x00000020u) pad.wButtons |= XAMINPUT_GAMEPAD_DPAD_RIGHT;
+    if (data.buttons & 0x00000008u) pad.wButtons |= XAMINPUT_GAMEPAD_START;
+    if (data.buttons & 0x00100000u) pad.wButtons |= XAMINPUT_GAMEPAD_BACK;
+    if (data.buttons & 0x00000002u) pad.wButtons |= XAMINPUT_GAMEPAD_LEFT_THUMB;
+    if (data.buttons & 0x00000004u) pad.wButtons |= XAMINPUT_GAMEPAD_RIGHT_THUMB;
+    if (data.buttons & 0x00000400u) pad.wButtons |= XAMINPUT_GAMEPAD_LEFT_SHOULDER;
+    if (data.buttons & 0x00000800u) pad.wButtons |= XAMINPUT_GAMEPAD_RIGHT_SHOULDER;
+    if (data.buttons & 0x00004000u) pad.wButtons |= XAMINPUT_GAMEPAD_A;
+    if (data.buttons & 0x00002000u) pad.wButtons |= XAMINPUT_GAMEPAD_B;
+    if (data.buttons & 0x00008000u) pad.wButtons |= XAMINPUT_GAMEPAD_X;
+    if (data.buttons & 0x00001000u) pad.wButtons |= XAMINPUT_GAMEPAD_Y;
+
+    auto scaleAxis = [](uint8_t raw, bool invert) -> int16_t {
+        int32_t centered = (int32_t)raw - 128;
+        if (centered >= -10 && centered <= 10)
+            return 0;
+        if (invert)
+            centered = -centered;
+        int32_t scaled = centered * 256;
+        if (scaled > 32767) scaled = 32767;
+        if (scaled < -32768) scaled = -32768;
+        return (int16_t)scaled;
+    };
+
+    pad.sThumbLX = scaleAxis(data.leftStickX, false);
+    pad.sThumbLY = scaleAxis(data.leftStickY, true);
+    pad.sThumbRX = scaleAxis(data.rightStickX, false);
+    pad.sThumbRY = scaleAxis(data.rightStickY, true);
+    pad.bLeftTrigger = data.analogL2 ? data.analogL2 : ((data.buttons & 0x00000100u) ? 255 : 0);
+    pad.bRightTrigger = data.analogR2 ? data.analogR2 : ((data.buttons & 0x00000200u) ? 255 : 0);
+
+    hid::g_inputDevice = hid::EInputDevice::PlayStation;
+    hid::g_inputDeviceController = hid::EInputDevice::PlayStation;
+    hid::g_inputDeviceExplicit = hid::EInputDeviceExplicit::DualSense;
+    return true;
+}
+
+void PumpPs5PadEvents()
+{
+    static uint16_t s_prevButtons = 0;
+    static int16_t s_prevLX = 0, s_prevLY = 0, s_prevRX = 0, s_prevRY = 0;
+    XAMINPUT_GAMEPAD pad{};
+    if (!PollPs5Pad(pad))
+        return;
+
+    struct BtnMap { uint16_t mask; SDL_GameControllerButton sdlBtn; };
+    static const BtnMap kMap[] = {
+        { XAMINPUT_GAMEPAD_DPAD_UP,        SDL_CONTROLLER_BUTTON_DPAD_UP },
+        { XAMINPUT_GAMEPAD_DPAD_DOWN,      SDL_CONTROLLER_BUTTON_DPAD_DOWN },
+        { XAMINPUT_GAMEPAD_DPAD_LEFT,      SDL_CONTROLLER_BUTTON_DPAD_LEFT },
+        { XAMINPUT_GAMEPAD_DPAD_RIGHT,     SDL_CONTROLLER_BUTTON_DPAD_RIGHT },
+        { XAMINPUT_GAMEPAD_START,          SDL_CONTROLLER_BUTTON_START },
+        { XAMINPUT_GAMEPAD_BACK,           SDL_CONTROLLER_BUTTON_BACK },
+        { XAMINPUT_GAMEPAD_LEFT_THUMB,     SDL_CONTROLLER_BUTTON_LEFTSTICK },
+        { XAMINPUT_GAMEPAD_RIGHT_THUMB,    SDL_CONTROLLER_BUTTON_RIGHTSTICK },
+        { XAMINPUT_GAMEPAD_LEFT_SHOULDER,  SDL_CONTROLLER_BUTTON_LEFTSHOULDER },
+        { XAMINPUT_GAMEPAD_RIGHT_SHOULDER, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER },
+        { XAMINPUT_GAMEPAD_A,              SDL_CONTROLLER_BUTTON_A },
+        { XAMINPUT_GAMEPAD_B,              SDL_CONTROLLER_BUTTON_B },
+        { XAMINPUT_GAMEPAD_X,              SDL_CONTROLLER_BUTTON_X },
+        { XAMINPUT_GAMEPAD_Y,              SDL_CONTROLLER_BUTTON_Y },
+    };
+
+    uint16_t diff = pad.wButtons ^ s_prevButtons;
+    if (diff)
+    {
+        for (const auto& m : kMap)
+        {
+            if (diff & m.mask)
+            {
+                bool pressed = (pad.wButtons & m.mask) != 0;
+                SDL_Event ev{};
+                ev.type = pressed ? SDL_CONTROLLERBUTTONDOWN : SDL_CONTROLLERBUTTONUP;
+                ev.cbutton.which = 0;
+                ev.cbutton.button = (Uint8)m.sdlBtn;
+                ev.cbutton.state = pressed ? SDL_PRESSED : SDL_RELEASED;
+                SDL_PushEvent(&ev);
+            }
+        }
+        s_prevButtons = pad.wButtons;
+    }
+
+    auto pushAxis = [](SDL_GameControllerAxis axis, int16_t val, int16_t& prev) {
+        if (std::abs((int)val - (int)prev) > 2048 || (val == 0 && prev != 0))
+        {
+            prev = val;
+            SDL_Event ev{};
+            ev.type = SDL_CONTROLLERAXISMOTION;
+            ev.caxis.which = 0;
+            ev.caxis.axis = (Uint8)axis;
+            ev.caxis.value = val;
+            SDL_PushEvent(&ev);
+        }
+    };
+    pushAxis(SDL_CONTROLLER_AXIS_LEFTX,  pad.sThumbLX,  s_prevLX);
+    pushAxis(SDL_CONTROLLER_AXIS_LEFTY,  ~pad.sThumbLY, s_prevLY);
+    pushAxis(SDL_CONTROLLER_AXIS_RIGHTX, pad.sThumbRX,  s_prevRX);
+    pushAxis(SDL_CONTROLLER_AXIS_RIGHTY, ~pad.sThumbRY, s_prevRY);
+}
+#endif
+
 #define TRANSLATE_INPUT(S, X) SDL_GameControllerGetButton(controller, S) << FirstBitLow(X)
 #define VIBRATION_TIMEOUT_MS 5000
 
@@ -322,6 +507,9 @@ int HID_OnSDLEvent(void*, SDL_Event* event)
 
 void hid::Init()
 {
+#if defined(__PROSPERO__)
+    InitPs5Pad();
+#endif
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_GAMECUBE, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS3, "1");
@@ -352,6 +540,11 @@ uint32_t hid::GetState(uint32_t dwUserIndex, XAMINPUT_STATE* pState)
 
     pState->dwPacketNumber = packet++;
 
+#if defined(__PROSPERO__)
+    if (PollPs5Pad(pState->Gamepad))
+        return ERROR_SUCCESS;
+#endif
+
     if (!g_activeController)
         return ERROR_DEVICE_NOT_CONNECTED;
 
@@ -365,6 +558,11 @@ uint32_t hid::SetState(uint32_t dwUserIndex, XAMINPUT_VIBRATION* pVibration)
     if (!pVibration)
         return ERROR_BAD_ARGUMENTS;
 
+#if defined(__PROSPERO__)
+    if (!g_activeController && s_ps5PadHandle >= 0)
+        return ERROR_SUCCESS;
+#endif
+
     if (!g_activeController)
         return ERROR_DEVICE_NOT_CONNECTED;
 
@@ -377,6 +575,18 @@ uint32_t hid::GetCapabilities(uint32_t dwUserIndex, XAMINPUT_CAPABILITIES* pCaps
 {
     if (!pCaps)
         return ERROR_BAD_ARGUMENTS;
+
+#if defined(__PROSPERO__)
+    if (!g_activeController && s_ps5PadHandle >= 0)
+    {
+        memset(pCaps, 0, sizeof(*pCaps));
+        pCaps->Type = XAMINPUT_DEVTYPE_GAMEPAD;
+        pCaps->SubType = XAMINPUT_DEVSUBTYPE_GAMEPAD;
+        pCaps->Flags = 0;
+        PollPs5Pad(pCaps->Gamepad);
+        return ERROR_SUCCESS;
+    }
+#endif
 
     if (!g_activeController)
         return ERROR_DEVICE_NOT_CONNECTED;

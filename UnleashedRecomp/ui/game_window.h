@@ -20,7 +20,11 @@ public:
     static inline int s_width = DEFAULT_WIDTH;
     static inline int s_height = DEFAULT_HEIGHT;
 
+#if defined(__PROSPERO__)
+    static inline bool s_isFocused = true;
+#else
     static inline bool s_isFocused;
+#endif
     static inline bool s_isIconNight;
     static inline bool s_isFullscreenCursorVisible;
     static inline bool s_isChangingDisplay;

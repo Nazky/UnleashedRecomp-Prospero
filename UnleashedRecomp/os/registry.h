@@ -13,7 +13,7 @@ namespace os::registry
 
 #if _WIN32
 #include <os/win32/registry_win32.inl>
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__PROSPERO__)
 #include <os/linux/registry_linux.inl>
 #elif defined(__APPLE__)
 #include <os/macos/registry_macos.inl>

@@ -231,6 +231,19 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
         }
     },
     {
+        // Notes: confirmation popup when leaving the options menu after changing a setting that requires a restart.
+        // Japanese Notes: This localization should include furigana.
+        "Options_Message_RestartConfirm",
+        {
+            { ELanguage::English,  "Some changed settings require a restart\nto take effect.\n\nWould you like to restart the game\nto apply these changes?" },
+            { ELanguage::Japanese, "[変更:へんこう]された[設定:せってい]を[反映:はんえい]するには\nゲームの[再起動:さいきどう]が[必要:ひつよう]です\n\nゲームを[再起動:さいきどう]して[設定:せってい]を[適用:てきよう]しますか？" },
+            { ELanguage::German,   "Einige geänderte Einstellungen erfordern\neinen Neustart.\n\nMöchtest du das Spiel neu starten,\num die Änderungen zu übernehmen?" },
+            { ELanguage::French,   "Certains paramètres modifiés nécessitent\nun redémarrage.\n\nVoulez-vous redémarrer le jeu pour\nappliquer ces modifications ?" },
+            { ELanguage::Spanish,  "Algunos ajustes modificados requieren\nreiniciar el juego.\n\n¿Quieres reiniciar el juego para\naplicar estos cambios?" },
+            { ELanguage::Italian,  "Alcune impostazioni modificate richiedono\nil riavvio del gioco.\n\nVuoi riavviare il gioco per\napplicare queste modifiche?" }
+        }
+    },
+    {
         // Notes: used for the button guide at the pause menu.
         "Achievements_Name",
         {
@@ -647,12 +660,21 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
         // Japanese Notes: This localization should include furigana.
         "Title_Message_AchievementDataCorrupt",
         {
+#if defined(__PROSPERO__)
+            { ELanguage::English,  "The trophy data appears to be\ncorrupted and cannot be loaded.\n\nProceeding from this point will\nclear your trophy data." },
+            { ELanguage::Japanese, "トロフィーデータが[破損:はそん]しているため\n[読:よ]み[込:こ]むことができません\n\nこの[先:さき]に[進:すす]むとトロフィーデータが\n[消去:しょうきょ]されます" },
+            { ELanguage::German,   "Die Trophäendaten sind möglicherweise\nfehlerhaft und können nicht\ngeladen werden.\n\nDurch das Fortfahren werden\ndeine bisherigen Trophäendaten gelöscht." },
+            { ELanguage::French,   "Les données de trophées semblent être\nendommagées et ne peuvent être\nchargées.\n\nSi vous continuez, vos données\nseront écrasées." },
+            { ELanguage::Spanish,  "Los datos de trofeos parecen estar\ncorruptos y no pueden cargarse.\n\nContinuar a partir de este punto\neliminará los datos de trofeos." },
+            { ELanguage::Italian,  "I dati dei trofei sembrano danneggiati\ne non possono essere caricati.\n\nSe prosegui da questo punto\ni tuoi trofei verranno cancellati." }
+#else
             { ELanguage::English,  "The achievement data appears to be\ncorrupted and cannot be loaded.\n\nProceeding from this point will\nclear your achievement data." },
             { ELanguage::Japanese, "[実績:じっせき]データが[破損:はそん]しているため\n[読:よ]み[込:こ]むことができません\n\nこの[先:さき]に[進:すす]むと[実績:じっせき]データが\n[消去:しょうきょ]されます" },
             { ELanguage::German,   "Die Erfolgsdaten sind möglicherweise\nfehlerhaft und können nicht\ngeladen werden.\n\nDurch das Fortfahren werden\ndeine bisherigen Erfolgsdaten gelöscht." },
             { ELanguage::French,   "Les données des succès semblent être\nendommagées et ne peuvent être\nchargées.\n\nSi vous continuez, vos données\nseront écrasées." },
             { ELanguage::Spanish,  "Los datos de logros parecen estar\ncorruptos y no pueden cargarse.\n\nContinuar a partir de este punto\neliminará los datos de logros." },
             { ELanguage::Italian,  "I file degli obiettivi sembrano danneggiati\ne non possono essere caricati.\n\nSe prosegui da questo punto\ni tuoi obiettivi verranno cancellati." }
+#endif
         }
     },
     {
@@ -661,12 +683,21 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
         // Japanese Notes: This localization should include furigana.
         "Title_Message_AchievementDataIOError",
         {
+#if defined(__PROSPERO__)
+            { ELanguage::English,  "The trophy data could not be loaded.\nYour trophies will not be saved." },
+            { ELanguage::Japanese, "トロフィーデータを[読:よ]み[込:こ]めませんでした\nトロフィーは[保存:ほぞん]されません。" },
+            { ELanguage::German,   "Die Trophäendaten konnten nicht geladen werden.\nDeine Trophäen werden nicht gespeichert." },
+            { ELanguage::French,   "Les données de trophées ne\npeuvent être chargées.\nVos trophées ne seront pas\nsauvegardés." },
+            { ELanguage::Spanish,  "Los datos de trofeos no pueden cargarse.\nTus trofeos no serán guardados." },
+            { ELanguage::Italian,  "I dati dei trofei non possono essere caricati.\nI tuoi trofei non verranno salvati." }
+#else
             { ELanguage::English,  "The achievement data could not be loaded.\nYour achievements will not be saved." },
             { ELanguage::Japanese, "[実績:じっせき]データを[読:よ]み[込:こ]めませんでした\n[実績:じっせき]は[保存:ほぞん]されません。" },
             { ELanguage::German,   "Die Erfolgsdaten konnten nicht geladen werden.\nDeine Erfolge werden nicht gespeichert." },
             { ELanguage::French,   "Les données des succès ne\npeuvent être chargées.\nVos succès ne seront pas\nsauvegardés." },
             { ELanguage::Spanish,  "Los datos de logros no pueden cargarse.\nTus logros no serán guardados." },
             { ELanguage::Italian,  "I file degli obiettivi non possono essere caricati.\nI tuoi obiettivi non verranno salvati." }
+#endif
         }
     },
     {

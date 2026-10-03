@@ -3,6 +3,7 @@
 #include <user/achievement_manager.h>
 #include <user/persistent_storage_manager.h>
 #include <user/config.h>
+#include <app.h>
 
 void AchievementManagerUnlockMidAsmHook(PPCRegister& id)
 {
@@ -77,6 +78,24 @@ PPC_FUNC(sub_825197C0)
     }
 
     __imp__sub_825197C0(ctx, base);
+}
+
+// WorldMap options restore helper (prevent stale SConfig at pWorldMap + 0x19C from reverting language/voice)
+PPC_FUNC_IMPL(__imp__sub_8256B088);
+PPC_FUNC(sub_8256B088)
+{
+    if (ctx.r3.u32 >= 0x10000)
+    {
+        auto* pConfigStruct = base + ctx.r3.u32 + 0x19C;
+        *reinterpret_cast<be<SWA::ELanguage>*>(pConfigStruct + 0x00) = (SWA::ELanguage)App::ToSwaLanguage(Config::Language.Value);
+        *reinterpret_cast<be<SWA::EVoiceLanguage>*>(pConfigStruct + 0x04) = (SWA::EVoiceLanguage)Config::VoiceLanguage.Value;
+        *reinterpret_cast<be<SWA::ERegion>*>(pConfigStruct + 0x10) = (Config::Language == ELanguage::Japanese)
+            ? SWA::eRegion_Japan
+            : SWA::eRegion_RestOfWorld;
+        *reinterpret_cast<bool*>(pConfigStruct + 0x15) = Config::Subtitles;
+    }
+
+    __imp__sub_8256B088(ctx, base);
 }
 
 // Logo skip

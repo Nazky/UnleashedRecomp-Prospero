@@ -1,0 +1,33 @@
+#!/bin/sh
+# ps5-native-app-boilerplate - PS5 Clang target wrapper.
+# Copyright (C) 2026 BlackBearReloaded
+# Copyright (C) 2026 Mihawk-99
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Applies the repository's proven compiler target and selected SDK paths.
+
+if [ -z "${PS5_PAYLOAD_SDK:-}" ]; then
+    echo "PS5_PAYLOAD_SDK is not set; run make deps or the dependency bootstrap." >&2
+    exit 2
+fi
+sdk_root=$PS5_PAYLOAD_SDK
+compiler=${PS5_CLANG:-}
+if [ -z "$compiler" ]; then
+    compiler=$(command -v clang || command -v clang-18 || true)
+fi
+if [ -z "$compiler" ]; then
+    echo "clang was not found; set PS5_CLANG to the clang executable." >&2
+    exit 2
+fi
+
+# IEEE denormals, as the payload SDK's wrappers: the PS5 target's default,
+# preserve-sign, assumes the flush-to-zero MXCSR a title here no longer has.
+exec "$compiler" \
+    -target x86_64-sie-ps5 \
+    -fvisibility-nodllstorageclass=default \
+    -isysroot "$sdk_root" \
+    -isystem "$sdk_root/target/include/c++/v1" \
+    -isystem "$sdk_root/target/include" \
+    -fno-stack-protector -fno-plt -femulated-tls \
+    -fdenormal-fp-math=ieee \
+    "$@"
