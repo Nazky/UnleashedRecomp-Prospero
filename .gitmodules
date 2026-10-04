@@ -58,3 +58,4 @@
 [submodule "thirdparty/plume"]
 	path = thirdparty/plume
 	url = https://github.com/Nazky/plume-ps5.git
+	branch = prospero
