@@ -1,0 +1,27 @@
+#pragma once
+
+#include <algorithm>
+#include <atomic>
+#include <cassert>
+#include <charconv>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <disasm.h>
+#include <file.h>
+#include <filesystem>
+#include <fstream>
+#include <function.h>
+#include <image.h>
+#include <memory>
+#include <string>
+#include <thread>
+#include <toml++/toml.hpp>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <xbox.h>
+#include <xxhash.h>
+#include <fmt/core.h>
+#include <x86/sse.h>

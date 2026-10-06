@@ -1,0 +1,1565 @@
+//     __ _____ _____ _____
+//  __|  |   __|     |   | |  JSON for Modern C++
+// |  |  |__   |  |  | | | |  version 3.12.0
+// |_____|_____|_____|_|___|  https://github.com/nlohmann/json
+//
+// SPDX-FileCopyrightText: 2013-2026 Niels Lohmann <https://nlohmann.me>
+// SPDX-License-Identifier: MIT
+
+#pragma once
+
+#include <algorithm> // remove, fill, find, none_of, min
+#include <array> // array
+#include <clocale> // localeconv, lconv
+#include <cmath> // isfinite
+#include <cstddef> // size_t, ptrdiff_t
+#include <cstdint> // uint8_t
+#include <cstdio> // snprintf
+#include <cstring> // memcpy, memset
+#include <iterator> // next
+#include <limits> // numeric_limits
+#include <string> // string, char_traits
+#include <type_traits> // is_same
+#include <vector> // vector
+
+#include <nlohmann/detail/conversions/to_chars.hpp>
+#include <nlohmann/detail/exceptions.hpp>
+#include <nlohmann/detail/input/string_scan.hpp>
+#include <nlohmann/detail/macro_scope.hpp>
+#include <nlohmann/detail/meta/cpp_future.hpp>
+#include <nlohmann/detail/output/output_adapters.hpp>
+#include <nlohmann/detail/recursion_depth_limit.hpp>
+#include <nlohmann/detail/string_concat.hpp>
+#include <nlohmann/detail/string_utils.hpp>
+#include <nlohmann/detail/value_t.hpp>
+
+NLOHMANN_JSON_NAMESPACE_BEGIN
+namespace detail
+{
+
+///////////////////
+// serialization //
+///////////////////
+
+/// how to treat decoding errors
+enum class error_handler_t
+{
+    strict,  ///< throw a type_error exception in case of invalid UTF-8
+    replace, ///< replace invalid UTF-8 sequences with U+FFFD
+    ignore   ///< ignore invalid UTF-8 sequences
+};
+
+template<typename BasicJsonType>
+class serializer
+{
+    using string_t = typename BasicJsonType::string_t;
+    using number_float_t = typename BasicJsonType::number_float_t;
+    using number_integer_t = typename BasicJsonType::number_integer_t;
+    using number_unsigned_t = typename BasicJsonType::number_unsigned_t;
+    using binary_char_t = typename BasicJsonType::binary_t::value_type;
+
+  public:
+    /*!
+    @param[in] s  output adapter to serialize to; not owned by the serializer,
+                  so it must outlive it (it lives at the call site)
+    @param[in] ichar  indentation character to use
+    @param[in] pretty_print_  whether the output shall be pretty-printed
+    @param[in] ensure_ascii_ If @a ensure_ascii_ is true, all non-ASCII
+    characters in the output are escaped with `\\uXXXX` sequences, and the
+    result consists of ASCII characters only.
+    @param[in] indent_step_  the indent level
+    @param[in] error_handler_  how to react on decoding errors
+
+    None of @a pretty_print_, @a ensure_ascii_ and @a indent_step_ change over
+    the life of the serializer, so they are captured once here instead of
+    being threaded through every call to @ref dump, @ref dump_internal and
+    @ref dump_iteratively.
+    */
+    serializer(output_adapter_protocol<char>& s, const char ichar,
+               const bool pretty_print_ = false,
+               const bool ensure_ascii_ = false,
+               const std::size_t indent_step_ = 0,
+               error_handler_t error_handler_ = error_handler_t::strict)
+        : o(&s)
+        , indent_char(ichar)
+        , pretty_print(pretty_print_)
+        , ensure_ascii(ensure_ascii_)
+        , indent_step(indent_step_)
+        , error_handler(error_handler_)
+    {}
+
+    // deleted because of pointer members
+    serializer(const serializer&) = delete;
+    serializer& operator=(const serializer&) = delete;
+    serializer(serializer&&) = delete;
+    serializer& operator=(serializer&&) = delete;
+    ~serializer() = default;
+
+    /*!
+    @brief internal implementation of the serialization function
+
+    This function is called by the public member function dump and organizes
+    the serialization internally. The indentation level is propagated as
+    additional parameter. Arrays and objects are serialized without recursion,
+    however deeply they are nested.
+
+    - strings and object keys are escaped using @ref dump_escaped
+    - integer numbers are converted using a digit-pair lookup table (@ref dump_integer)
+    - floating-point numbers are converted to a string using @ref dump_float, which
+      uses `to_chars` for IEEE-754 types and `snprintf` otherwise
+    - binary values are serialized as objects containing the subtype and the
+      byte array
+
+    @param[in] val               value to serialize
+    @param[in] current_indent    the current indent level (only used internally)
+    */
+    void dump(const BasicJsonType& val,
+              const std::size_t current_indent = 0)
+    {
+        dump_internal(val, current_indent);
+        flush();
+    }
+
+  JSON_PRIVATE_UNLESS_TESTED:
+    /*!
+    @brief worker for @ref dump
+
+    Identical in behavior to the historical @ref dump, but writes into the
+    serializer's internal @ref write_buffer instead of issuing a virtual call
+    per token. The public @ref dump wraps this and flushes the buffer once the
+    top-level value has been serialized.
+
+    Serializing a container descends into its elements, so a value nested deeply
+    enough used to exhaust the call stack and terminate the process with no
+    exception to catch. The descent is bounded here: once @ref recursion_depth_limit
+    levels have been entered, @ref dump_iteratively writes out what is left
+    without the call stack. A value nested less deeply than that - all but a
+    vanishing minority - is written by exactly the code that always wrote it.
+
+    @sa https://github.com/nlohmann/json/issues/5387
+    */
+    void dump_internal(const BasicJsonType& val,
+                       const std::size_t current_indent = 0,
+                       const std::size_t depth = 0)
+    {
+        switch (val.m_data.m_type)
+        {
+            case value_t::object:
+            {
+                if (JSON_HEDLEY_UNLIKELY(depth >= recursion_depth_limit()))
+                {
+                    dump_iteratively(val, current_indent);
+                    return;
+                }
+
+                if (val.m_data.m_value.object->empty())
+                {
+                    put_literal("{}");
+                    return;
+                }
+
+                if (pretty_print)
+                {
+                    put_literal("{\n");
+
+                    // variable to hold indentation for recursive calls
+                    const auto new_indent = next_indent(current_indent, indent_step);
+
+                    // first n-1 elements
+                    auto i = val.m_data.m_value.object->cbegin();
+                    for (std::size_t cnt = 0; cnt < val.m_data.m_value.object->size() - 1; ++cnt, ++i)
+                    {
+                        put_indent(new_indent);
+                        put_char('"');
+                        dump_escaped(i->first);
+                        put_literal("\": ");
+                        dump_internal(i->second, new_indent, depth + 1);
+                        put_literal(",\n");
+                    }
+
+                    // last element
+                    JSON_ASSERT(i != val.m_data.m_value.object->cend());
+                    JSON_ASSERT(std::next(i) == val.m_data.m_value.object->cend());
+                    put_indent(new_indent);
+                    put_char('"');
+                    dump_escaped(i->first);
+                    put_literal("\": ");
+                    dump_internal(i->second, new_indent, depth + 1);
+
+                    put_char('\n');
+                    put_indent(current_indent);
+                    put_char('}');
+                }
+                else
+                {
+                    put_char('{');
+
+                    // first n-1 elements
+                    auto i = val.m_data.m_value.object->cbegin();
+                    for (std::size_t cnt = 0; cnt < val.m_data.m_value.object->size() - 1; ++cnt, ++i)
+                    {
+                        put_char('"');
+                        dump_escaped(i->first);
+                        put_literal("\":");
+                        dump_internal(i->second, current_indent, depth + 1);
+                        put_char(',');
+                    }
+
+                    // last element
+                    JSON_ASSERT(i != val.m_data.m_value.object->cend());
+                    JSON_ASSERT(std::next(i) == val.m_data.m_value.object->cend());
+                    put_char('"');
+                    dump_escaped(i->first);
+                    put_literal("\":");
+                    dump_internal(i->second, current_indent, depth + 1);
+
+                    put_char('}');
+                }
+
+                return;
+            }
+
+            case value_t::array:
+            {
+                if (JSON_HEDLEY_UNLIKELY(depth >= recursion_depth_limit()))
+                {
+                    dump_iteratively(val, current_indent);
+                    return;
+                }
+
+                if (val.m_data.m_value.array->empty())
+                {
+                    put_literal("[]");
+                    return;
+                }
+
+                if (pretty_print)
+                {
+                    put_literal("[\n");
+
+                    // variable to hold indentation for recursive calls
+                    const auto new_indent = next_indent(current_indent, indent_step);
+
+                    // first n-1 elements
+                    for (auto i = val.m_data.m_value.array->cbegin();
+                            i != val.m_data.m_value.array->cend() - 1; ++i)
+                    {
+                        put_indent(new_indent);
+                        dump_internal(*i, new_indent, depth + 1);
+                        put_literal(",\n");
+                    }
+
+                    // last element
+                    JSON_ASSERT(!val.m_data.m_value.array->empty());
+                    put_indent(new_indent);
+                    dump_internal(val.m_data.m_value.array->back(), new_indent, depth + 1);
+
+                    put_char('\n');
+                    put_indent(current_indent);
+                    put_char(']');
+                }
+                else
+                {
+                    put_char('[');
+
+                    // first n-1 elements
+                    for (auto i = val.m_data.m_value.array->cbegin();
+                            i != val.m_data.m_value.array->cend() - 1; ++i)
+                    {
+                        dump_internal(*i, current_indent, depth + 1);
+                        put_char(',');
+                    }
+
+                    // last element
+                    JSON_ASSERT(!val.m_data.m_value.array->empty());
+                    dump_internal(val.m_data.m_value.array->back(), current_indent, depth + 1);
+
+                    put_char(']');
+                }
+
+                return;
+            }
+
+            case value_t::string:
+            case value_t::binary:
+            case value_t::boolean:
+            case value_t::number_integer:
+            case value_t::number_unsigned:
+            case value_t::number_float:
+            case value_t::discarded:
+            case value_t::null:
+            default:
+                dump_scalar(val, current_indent);
+                return;
+        }
+    }
+
+  private:
+    /*!
+    @brief write out @a val and everything below it without the call stack
+
+    Emits the same bytes as @ref dump_internal, keeping the containers it has
+    entered on an explicit stack instead of descending into them. Only reached
+    for values nested deeper than @ref recursion_depth_limit, which is why it is not
+    written for speed: walking every value this way measured up to 20% slower on
+    object-heavy documents than letting the compiler drive the descent.
+    */
+    void dump_iteratively(const BasicJsonType& val,
+                          const std::size_t current_indent = 0)
+    {
+        // Scalars, empty containers and binary values are written by dump_value
+        // alone, so nothing is allocated for them: only a container with
+        // elements is ever pushed.
+        std::vector<dump_frame> stack;
+
+        dump_value(val, current_indent, stack);
+
+        while (!stack.empty())
+        {
+            dump_frame& frame = stack.back();
+
+            if (frame.value->m_data.m_type == value_t::object)
+            {
+                const auto* object = frame.value->m_data.m_value.object;
+
+                if (frame.object_it == object->cend())
+                {
+                    if (pretty_print)
+                    {
+                        put_char('\n');
+                        put_indent(frame.current_indent);
+                    }
+
+                    put_char('}');
+                    stack.pop_back();
+                    continue;
+                }
+
+                // the separator goes in front of every element but the first,
+                // which puts exactly one between each pair and none at the end
+                if (frame.object_it != object->cbegin())
+                {
+                    if (pretty_print)
+                    {
+                        put_literal(",\n");
+                    }
+                    else
+                    {
+                        put_char(',');
+                    }
+                }
+
+                if (pretty_print)
+                {
+                    put_indent(frame.child_indent);
+                }
+
+                put_char('"');
+                dump_escaped(frame.object_it->first);
+
+                if (pretty_print)
+                {
+                    put_literal("\": ");
+                }
+                else
+                {
+                    put_literal("\":");
+                }
+
+                const BasicJsonType& element = frame.object_it->second;
+                ++frame.object_it;
+
+                // read everything needed from the frame before this: entering a
+                // container pushes another one and can move them all
+                const std::size_t element_indent = frame.child_indent;
+                dump_value(element, element_indent, stack);
+            }
+            else
+            {
+                const auto* array = frame.value->m_data.m_value.array;
+
+                if (frame.array_it == array->cend())
+                {
+                    if (pretty_print)
+                    {
+                        put_char('\n');
+                        put_indent(frame.current_indent);
+                    }
+
+                    put_char(']');
+                    stack.pop_back();
+                    continue;
+                }
+
+                if (frame.array_it != array->cbegin())
+                {
+                    if (pretty_print)
+                    {
+                        put_literal(",\n");
+                    }
+                    else
+                    {
+                        put_char(',');
+                    }
+                }
+
+                if (pretty_print)
+                {
+                    put_indent(frame.child_indent);
+                }
+
+                const BasicJsonType& element = *frame.array_it;
+                ++frame.array_it;
+
+                // see above
+                const std::size_t element_indent = frame.child_indent;
+                dump_value(element, element_indent, stack);
+            }
+        }
+    }
+
+  private:
+    /// @brief a container that has been opened but not closed yet
+    struct dump_frame
+    {
+        dump_frame(const BasicJsonType* value_, const std::size_t current_indent_,
+                   const std::size_t child_indent_) noexcept
+            : value(value_)
+            , current_indent(current_indent_)
+            , child_indent(child_indent_)
+        {}
+
+        /// the object or array being serialized
+        const BasicJsonType* value;
+        /// the element to serialize next; which of the two is live follows from
+        /// the type of @a value. They are kept side by side rather than in a
+        /// union, which would need its special members written out by hand, see
+        /// detail/iterators/internal_iterator.hpp
+        typename BasicJsonType::object_t::const_iterator object_it{};
+        typename BasicJsonType::array_t::const_iterator array_it{};
+        /// the indentation of the container itself, used by its closing bracket
+        std::size_t current_indent;
+        /// the indentation of the container's elements
+        std::size_t child_indent;
+    };
+
+    /*!
+    @brief serialize the value @a val, but not the elements of a container
+
+    An object or array with elements is opened and pushed onto @a stack for
+    @ref dump_iteratively to walk; everything else - including a binary value,
+    which looks like an object but has no elements to descend into - is written
+    out in full by @ref dump_scalar.
+    */
+    void dump_value(const BasicJsonType& val,
+                    const std::size_t current_indent,
+                    std::vector<dump_frame>& stack)
+    {
+        switch (val.m_data.m_type)
+        {
+            case value_t::object:
+            {
+                if (val.m_data.m_value.object->empty())
+                {
+                    put_literal("{}");
+                    return;
+                }
+
+                std::size_t child_indent = current_indent;
+
+                if (pretty_print)
+                {
+                    put_literal("{\n");
+                    child_indent = next_indent(current_indent, indent_step);
+                }
+                else
+                {
+                    put_char('{');
+                }
+
+                stack.emplace_back(&val, current_indent, child_indent);
+                stack.back().object_it = val.m_data.m_value.object->cbegin();
+                return;
+            }
+
+            case value_t::array:
+            {
+                if (val.m_data.m_value.array->empty())
+                {
+                    put_literal("[]");
+                    return;
+                }
+
+                std::size_t child_indent = current_indent;
+
+                if (pretty_print)
+                {
+                    put_literal("[\n");
+                    child_indent = next_indent(current_indent, indent_step);
+                }
+                else
+                {
+                    put_char('[');
+                }
+
+                stack.emplace_back(&val, current_indent, child_indent);
+                stack.back().array_it = val.m_data.m_value.array->cbegin();
+                return;
+            }
+
+            case value_t::string:
+            case value_t::binary:
+            case value_t::boolean:
+            case value_t::number_integer:
+            case value_t::number_unsigned:
+            case value_t::number_float:
+            case value_t::discarded:
+            case value_t::null:
+            default:
+                dump_scalar(val, current_indent);
+                return;
+        }
+    }
+
+    /*!
+    @brief serialize the value @a val, which is neither an object nor an array
+
+    Shared by @ref dump_internal and @ref dump_value, so that a value is written
+    the same way however deeply it is nested. A binary value is written out here
+    in full: it looks like an object, but has no elements to descend into.
+
+    @param[in] val             value to serialize; not an object or array
+    @param[in] current_indent  the indentation of @a val, used for a
+                               pretty-printed binary value
+    */
+    void dump_scalar(const BasicJsonType& val, const std::size_t current_indent)
+    {
+        switch (val.m_data.m_type)
+        {
+            case value_t::string:
+            {
+                put_char('"');
+                dump_escaped(*val.m_data.m_value.string);
+                put_char('"');
+                return;
+            }
+
+            case value_t::binary:
+            {
+                if (pretty_print)
+                {
+                    put_literal("{\n");
+
+                    // variable to hold indentation for the bytes
+                    const auto new_indent = next_indent(current_indent, indent_step);
+
+                    put_indent(new_indent);
+
+                    put_literal("\"bytes\": [");
+
+                    if (!val.m_data.m_value.binary->empty())
+                    {
+                        for (auto i = val.m_data.m_value.binary->cbegin();
+                                i != val.m_data.m_value.binary->cend() - 1; ++i)
+                        {
+                            dump_byte(*i);
+                            put_literal(", ");
+                        }
+                        dump_byte(val.m_data.m_value.binary->back());
+                    }
+
+                    put_literal("],\n");
+                    put_indent(new_indent);
+
+                    put_literal("\"subtype\": ");
+                    if (val.m_data.m_value.binary->has_subtype())
+                    {
+                        dump_integer(val.m_data.m_value.binary->subtype());
+                    }
+                    else
+                    {
+                        put_literal("null");
+                    }
+                    put_char('\n');
+                    put_indent(current_indent);
+                    put_char('}');
+                }
+                else
+                {
+                    put_literal("{\"bytes\":[");
+
+                    if (!val.m_data.m_value.binary->empty())
+                    {
+                        for (auto i = val.m_data.m_value.binary->cbegin();
+                                i != val.m_data.m_value.binary->cend() - 1; ++i)
+                        {
+                            dump_byte(*i);
+                            put_char(',');
+                        }
+                        dump_byte(val.m_data.m_value.binary->back());
+                    }
+
+                    put_literal("],\"subtype\":");
+                    if (val.m_data.m_value.binary->has_subtype())
+                    {
+                        dump_integer(val.m_data.m_value.binary->subtype());
+                        put_char('}');
+                    }
+                    else
+                    {
+                        put_literal("null}");
+                    }
+                }
+                return;
+            }
+
+            case value_t::boolean:
+            {
+                if (val.m_data.m_value.boolean)
+                {
+                    put_literal("true");
+                }
+                else
+                {
+                    put_literal("false");
+                }
+                return;
+            }
+
+            case value_t::number_integer:
+            {
+                dump_integer(val.m_data.m_value.number_integer);
+                return;
+            }
+
+            case value_t::number_unsigned:
+            {
+                dump_integer(val.m_data.m_value.number_unsigned);
+                return;
+            }
+
+            case value_t::number_float:
+            {
+                dump_float(val.m_data.m_value.number_float);
+                return;
+            }
+
+            case value_t::discarded:
+            {
+                put_literal("<discarded>");
+                return;
+            }
+
+            case value_t::null:
+            {
+                put_literal("null");
+                return;
+            }
+
+            case value_t::object: // LCOV_EXCL_LINE
+            case value_t::array:  // LCOV_EXCL_LINE
+            default:            // LCOV_EXCL_LINE
+                JSON_ASSERT(false); // NOLINT(cert-dcl03-c,hicpp-static-assert,misc-static-assert) LCOV_EXCL_LINE
+        }
+    }
+
+
+    /*!
+    @brief the indentation level to use for the children of the current value
+
+    A very large @a indent_step can wrap the unsigned accumulation on deep
+    nesting, which would silently truncate the indentation. Far harder to reach
+    now that the accumulator is a std::size_t, but still reachable where that is
+    32 bits wide.
+    */
+    static std::size_t next_indent(const std::size_t current_indent, const std::size_t indent_step)
+    {
+        const std::size_t new_indent = current_indent + indent_step;
+        JSON_ASSERT(new_indent >= current_indent);
+        return new_indent;
+    }
+
+  JSON_PRIVATE_UNLESS_TESTED:
+    /*!
+    @brief dump escaped string
+
+    Escape a string by replacing certain special characters by a sequence of an
+    escape character (backslash) and another character and other control
+    characters by a sequence of "\u" followed by a four-digit hex
+    representation. The escaped string is appended to @ref write_buffer.
+
+    @param[in] s  the string to escape
+
+    Complexity: Linear in the length of string @a s.
+    */
+    void dump_escaped(const string_t& s)
+    {
+        // dispatch once here rather than test the flag inside the loop: it does
+        // not change while a string is written, and folding it lets each of the
+        // two scanners be inlined into a loop of its own
+        if (ensure_ascii)
+        {
+            dump_escaped_impl<true>(s);
+        }
+        else
+        {
+            dump_escaped_impl<false>(s);
+        }
+    }
+
+    /*!
+    @brief worker for @ref dump_escaped
+
+    @a ensure_ascii is a template parameter here so that the branch on it is
+    resolved once, outside the loop; see @ref dump_escaped.
+    */
+    template<bool EnsureAscii>
+    void dump_escaped_impl(const string_t& s)
+    {
+        std::uint32_t codepoint{};
+        std::uint8_t state = UTF8_ACCEPT;
+        std::size_t bytes = 0;  // number of bytes written to string_buffer
+
+        // number of bytes written at the point of the last valid byte
+        std::size_t bytes_after_last_accept = 0;
+        std::size_t undumped_chars = 0;
+
+        for (std::size_t i = 0; i < s.size(); ++i)
+        {
+            // Fast path: at a character boundary (state == UTF8_ACCEPT),
+            // bulk-copy the longest run of bytes that need no escaping using a
+            // SWAR scanner shared with the lexer's contiguous path. The scanner
+            // stops exactly at the first byte dump_escaped would handle
+            // individually, so that byte is left to the byte-at-a-time path
+            // below, keeping escaping output and error diagnostics unchanged.
+            //
+            // - EnsureAscii == false: string_bulk_run() copies ordinary bytes
+            //   and complete well-formed UTF-8, stopping at a quote, backslash,
+            //   control character (< 0x20), or ill-formed/truncated sequence.
+            // - EnsureAscii == true: only printable ASCII may be copied
+            //   verbatim; find_ascii_copyable_run() additionally stops at 0x7F
+            //   and every non-ASCII byte (>= 0x80), which must be \u-escaped.
+            if (state == UTF8_ACCEPT)
+            {
+                const auto* const data = reinterpret_cast<const unsigned char*>(s.data());
+                // A run can only be non-empty when the very first byte is one
+                // the scanner may copy, so test that single byte before paying
+                // for the scan. Without it, text whose characters all have to be
+                // escaped - CJK under ensure_ascii, where every byte is >= 0x80 -
+                // runs the scanner once per character only to be told zero.
+                std::size_t run = 0;
+                if (!EnsureAscii)
+                {
+                    run = string_bulk_run(data + i, s.size() - i);
+                }
+                else if (is_ascii_copyable(data[i]))
+                {
+                    run = find_ascii_copyable_run(data + i, s.size() - i);
+                }
+                if (run != 0)
+                {
+                    // emit any bytes still pending in string_buffer first to
+                    // preserve output order, then write the run directly
+                    if (bytes != 0)
+                    {
+                        put_buffer(string_buffer, bytes);
+                        bytes = 0;
+                    }
+                    put_string(s, i, i + run);
+                    bytes_after_last_accept = 0;
+                    undumped_chars = 0;
+                    i += run;
+                    if (i >= s.size())
+                    {
+                        break;
+                    }
+                }
+            }
+
+            const auto byte = static_cast<std::uint8_t>(s[i]);
+
+            switch (decode(state, codepoint, byte))
+            {
+                case UTF8_ACCEPT:  // decode found a new code point
+                {
+                    switch (codepoint)
+                    {
+                        case 0x08: // backspace
+                        {
+                            string_buffer[bytes++] = '\\';
+                            string_buffer[bytes++] = 'b';
+                            break;
+                        }
+
+                        case 0x09: // horizontal tab
+                        {
+                            string_buffer[bytes++] = '\\';
+                            string_buffer[bytes++] = 't';
+                            break;
+                        }
+
+                        case 0x0A: // newline
+                        {
+                            string_buffer[bytes++] = '\\';
+                            string_buffer[bytes++] = 'n';
+                            break;
+                        }
+
+                        case 0x0C: // formfeed
+                        {
+                            string_buffer[bytes++] = '\\';
+                            string_buffer[bytes++] = 'f';
+                            break;
+                        }
+
+                        case 0x0D: // carriage return
+                        {
+                            string_buffer[bytes++] = '\\';
+                            string_buffer[bytes++] = 'r';
+                            break;
+                        }
+
+                        case 0x22: // quotation mark
+                        {
+                            string_buffer[bytes++] = '\\';
+                            string_buffer[bytes++] = '"';
+                            break;
+                        }
+
+                        case 0x5C: // reverse solidus
+                        {
+                            string_buffer[bytes++] = '\\';
+                            string_buffer[bytes++] = '\\';
+                            break;
+                        }
+
+                        default:
+                        {
+                            // escape control characters (0x00..0x1F) or, if
+                            // EnsureAscii parameter is used, non-ASCII characters
+                            if ((codepoint <= 0x1F) || (EnsureAscii && (codepoint >= 0x7F)))
+                            {
+                                if (codepoint <= 0xFFFF)
+                                {
+                                    write_u_escape(bytes, static_cast<std::uint16_t>(codepoint));
+                                }
+                                else
+                                {
+                                    write_u_escape(bytes, static_cast<std::uint16_t>(0xD7C0u + (codepoint >> 10u)));
+                                    write_u_escape(bytes, static_cast<std::uint16_t>(0xDC00u + (codepoint & 0x3FFu)));
+                                }
+                            }
+                            else
+                            {
+                                // copy byte to buffer (all previous bytes
+                                // been copied have in default case above)
+                                string_buffer[bytes++] = s[i];
+                            }
+                            break;
+                        }
+                    }
+
+                    // write buffer and reset index; there must be 13 bytes
+                    // left, as this is the maximal number of bytes to be
+                    // written ("\uxxxx\uxxxx\0") for one code point
+                    if (string_buffer.size() - bytes < 13)
+                    {
+                        put_buffer(string_buffer, bytes);
+                        bytes = 0;
+                    }
+
+                    // remember the byte position of this accept
+                    bytes_after_last_accept = bytes;
+                    undumped_chars = 0;
+                    break;
+                }
+
+                case UTF8_REJECT:  // decode found invalid UTF-8 byte
+                {
+                    switch (error_handler)
+                    {
+                        case error_handler_t::strict:
+                        {
+                            JSON_THROW(type_error::create(316, concat("invalid UTF-8 byte at index ", std::to_string(i), ": 0x", detail::hex_byte(byte)), nullptr));
+                        }
+
+                        case error_handler_t::ignore:
+                        case error_handler_t::replace:
+                        {
+                            // in case we saw this character the first time, we
+                            // would like to read it again, because the byte
+                            // may be OK for itself, but just not OK for the
+                            // previous sequence
+                            if (undumped_chars > 0)
+                            {
+                                --i;
+                            }
+
+                            // reset length buffer to the last accepted index;
+                            // thus removing/ignoring the invalid characters
+                            bytes = bytes_after_last_accept;
+
+                            if (error_handler == error_handler_t::replace)
+                            {
+                                // add a replacement character
+                                if (EnsureAscii)
+                                {
+                                    string_buffer[bytes++] = '\\';
+                                    string_buffer[bytes++] = 'u';
+                                    string_buffer[bytes++] = 'f';
+                                    string_buffer[bytes++] = 'f';
+                                    string_buffer[bytes++] = 'f';
+                                    string_buffer[bytes++] = 'd';
+                                }
+                                else
+                                {
+                                    string_buffer[bytes++] = '\xEF';
+                                    string_buffer[bytes++] = '\xBF';
+                                    string_buffer[bytes++] = '\xBD';
+                                }
+
+                                // write buffer and reset index; there must be 13 bytes
+                                // left, as this is the maximal number of bytes to be
+                                // written ("\uxxxx\uxxxx\0") for one code point
+                                if (string_buffer.size() - bytes < 13)
+                                {
+                                    put_buffer(string_buffer, bytes);
+                                    bytes = 0;
+                                }
+
+                                bytes_after_last_accept = bytes;
+                            }
+
+                            undumped_chars = 0;
+
+                            // continue processing the string
+                            state = UTF8_ACCEPT;
+                            break;
+                        }
+
+                        default:            // LCOV_EXCL_LINE
+                            JSON_ASSERT(false); // NOLINT(cert-dcl03-c,hicpp-static-assert,misc-static-assert) LCOV_EXCL_LINE
+                    }
+                    break;
+                }
+
+                default:  // decode found yet incomplete multibyte code point
+                {
+                    if (!EnsureAscii)
+                    {
+                        // code point will not be escaped - copy byte to buffer
+                        string_buffer[bytes++] = s[i];
+                    }
+                    ++undumped_chars;
+                    break;
+                }
+            }
+        }
+
+        // we finished processing the string
+        if (JSON_HEDLEY_LIKELY(state == UTF8_ACCEPT))
+        {
+            // write buffer
+            if (bytes > 0)
+            {
+                put_buffer(string_buffer, bytes);
+            }
+        }
+        else
+        {
+            // we finish reading, but do not accept: string was incomplete
+            switch (error_handler)
+            {
+                case error_handler_t::strict:
+                {
+                    JSON_THROW(type_error::create(316, concat("incomplete UTF-8 string; last byte: 0x", detail::hex_byte(static_cast<std::uint8_t>(s[s.size() - 1]))), nullptr));
+                }
+
+                case error_handler_t::ignore:
+                {
+                    // write all accepted bytes
+                    put_buffer(string_buffer, bytes_after_last_accept);
+                    break;
+                }
+
+                case error_handler_t::replace:
+                {
+                    // write all accepted bytes
+                    put_buffer(string_buffer, bytes_after_last_accept);
+                    // add a replacement character
+                    if (EnsureAscii)
+                    {
+                        put_literal("\\ufffd");
+                    }
+                    else
+                    {
+                        put_literal("\xEF\xBF\xBD");
+                    }
+                    break;
+                }
+
+                default:            // LCOV_EXCL_LINE
+                    JSON_ASSERT(false); // NOLINT(cert-dcl03-c,hicpp-static-assert,misc-static-assert) LCOV_EXCL_LINE
+            }
+        }
+    }
+
+  private:
+    /*!
+    @brief append a single character to the write buffer
+
+    Structural characters ('{', '"', ',', ...) previously went straight to the
+    output adapter, one virtual call each. Buffering them and flushing in bulk
+    turns those many indirect calls into a single memcpy plus an occasional
+    flush, which dominates the cost of serializing object/array-heavy values.
+    */
+    void put_char(char c)
+    {
+        if (JSON_HEDLEY_UNLIKELY(write_buffer_pos == write_buffer.size()))
+        {
+            flush();
+        }
+        write_buffer[write_buffer_pos++] = c;
+    }
+
+    /*!
+    @brief append @a indent indentation characters to the write buffer
+
+    Writes the indentation straight into the buffer instead of copying it out of
+    a pre-grown indentation string, so no auxiliary string has to be sized,
+    resized, or kept in sync with the deepest nesting level reached.
+
+    An indentation wider than the buffer is emitted by filling the buffer with
+    the indentation character once and flushing that same content repeatedly:
+    flushing does not disturb what the buffer holds, so re-filling it between
+    flushes would be redundant work.
+    */
+    void put_indent(std::size_t indent)
+    {
+        // closing braces at the outermost level ask for no indentation at all
+        if (indent == 0)
+        {
+            return;
+        }
+
+        const std::size_t capacity = write_buffer.size();
+
+        // fill whatever room is left in the buffer; this is the whole job
+        // whenever the indentation is narrower than the buffer, which is the
+        // case for every sane indent_step
+        const std::size_t head = (std::min)(indent, capacity - write_buffer_pos);
+        std::memset(write_buffer.data() + write_buffer_pos, indent_char, head);
+        write_buffer_pos += head;
+        indent -= head;
+
+        if (JSON_HEDLEY_LIKELY(indent == 0))
+        {
+            return;
+        }
+
+        // the buffer is full and the remainder spans whole buffer-fulls: flush
+        // what is pending, then fill the buffer with the indentation character
+        // exactly once and hand the same bytes to the adapter as often as needed
+        flush();
+        std::memset(write_buffer.data(), indent_char, capacity);
+
+        while (indent >= capacity)
+        {
+            write_buffer_pos = capacity;
+            flush();
+            indent -= capacity;
+        }
+
+        // the buffer still holds indentation characters throughout, so the tail
+        // only has to be claimed, not written again
+        write_buffer_pos = indent;
+    }
+
+    /*!
+    @brief append a string literal to the write buffer
+
+    The length comes from the array bound rather than a hand-written count, so
+    it cannot drift out of sync with the literal. A literal always fits into the
+    buffer (checked at compile time), so unlike @ref put_string this needs no
+    write-through path for oversized runs.
+    */
+    template<std::size_t N>
+    void put_literal(const char (&s)[N]) // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
+    {
+        static_assert(N >= 2, "put_literal expects a non-empty string literal");
+        // the array bound counts the terminating NUL, which is not written
+        constexpr std::size_t length = N - 1;
+        static_assert(length < write_buffer_size, "string literal must fit into the write buffer");
+
+        if (JSON_HEDLEY_UNLIKELY(write_buffer_pos + length > write_buffer.size()))
+        {
+            flush();
+        }
+        std::memcpy(write_buffer.data() + write_buffer_pos, s, length);
+        write_buffer_pos += length;
+    }
+
+    /*!
+    @brief append the characters of @a str in [@a start, @a end)
+
+    The only way to append a run of characters: @a str carries its own bound,
+    so the range can be checked against it, which a bare pointer plus a count
+    could not do. Runs that do not fit the buffer are written straight through
+    the output adapter (after flushing what is pending), so large string and
+    number payloads are not copied an extra time.
+    */
+    template<typename StringType>
+    void put_string(const StringType& str, std::size_t start, std::size_t end)
+    {
+        JSON_ASSERT(start <= end);
+        JSON_ASSERT(end <= str.size());
+
+        const char* const s = str.data() + start;
+        const std::size_t length = end - start;
+
+        if (JSON_HEDLEY_UNLIKELY(length >= write_buffer.size()))
+        {
+            flush();
+            o->write_characters(s, length);
+            return;
+        }
+        if (JSON_HEDLEY_UNLIKELY(write_buffer_pos + length > write_buffer.size()))
+        {
+            flush();
+        }
+        std::memcpy(write_buffer.data() + write_buffer_pos, s, length);
+        write_buffer_pos += length;
+    }
+
+    /*!
+    @brief append the first @a length characters of a fixed-size buffer
+    */
+    template<std::size_t N>
+    void put_buffer(const std::array<char, N>& buffer, std::size_t length)
+    {
+        put_string(buffer, 0, length);
+    }
+
+  JSON_PRIVATE_UNLESS_TESTED:
+    /*!
+    @brief flush the write buffer to the output adapter
+
+    Writing zero characters is a well-defined no-op for every output adapter, so
+    the buffered length is passed through unconditionally (no empty-guard branch
+    to leave uncovered).
+
+    @note dump_escaped() and dump_integer()/dump_float() write into the internal
+    write buffer; callers that invoke them directly (rather than through the
+    public dump()) must call flush() before inspecting the output.
+    */
+    void flush()
+    {
+        o->write_characters(write_buffer.data(), write_buffer_pos);
+        write_buffer_pos = 0;
+    }
+
+  private:
+    /*!
+    @brief count digits
+
+    Count the number of decimal (base 10) digits for an input unsigned integer.
+
+    @param[in] x  unsigned integer number to count its digits
+    @return    number of decimal digits
+    */
+    unsigned int count_digits(number_unsigned_t x) noexcept
+    {
+        unsigned int n_digits = 1;
+        for (;;)
+        {
+            if (x < 10)
+            {
+                return n_digits;
+            }
+            if (x < 100)
+            {
+                return n_digits + 1;
+            }
+            if (x < 1000)
+            {
+                return n_digits + 2;
+            }
+            if (x < 10000)
+            {
+                return n_digits + 3;
+            }
+            x = x / 10000u;
+            n_digits += 4;
+        }
+    }
+
+    /*!
+     * @brief write a lowercase "\\uXXXX" escape sequence into @a string_buffer
+     *
+     * Branch-free replacement for `snprintf(buf, 7, "\\u%04x", codeunit)` in the
+     * string escaping hot path. It writes exactly six characters ('\\', 'u' and
+     * four hex digits) at position @a pos of @a string_buffer via a nibble
+     * lookup table, avoiding the format-string parsing and locale machinery of
+     * `snprintf`. Advances @a pos by the number of bytes written (6).
+     *
+     * @param[in] pos       position in @a string_buffer to write at; there must
+     *                      be at least 6 bytes of headroom
+     * @param[in] codeunit  16-bit value to encode
+     */
+    void write_u_escape(std::size_t& pos, std::uint16_t codeunit) noexcept
+    {
+        JSON_ASSERT(string_buffer.size() - pos >= 6);
+        constexpr const char* nibble_to_hex = "0123456789abcdef";
+        string_buffer[pos + 0] = '\\';
+        string_buffer[pos + 1] = 'u';
+        string_buffer[pos + 2] = nibble_to_hex[(codeunit >> 12u) & 0x0Fu];
+        string_buffer[pos + 3] = nibble_to_hex[(codeunit >> 8u) & 0x0Fu];
+        string_buffer[pos + 4] = nibble_to_hex[(codeunit >> 4u) & 0x0Fu];
+        string_buffer[pos + 5] = nibble_to_hex[codeunit & 0x0Fu];
+        pos += 6;
+    }
+
+    /*!
+    @brief convert a single element of a binary value to its byte value
+
+    The elements of a binary value are dumped as the numbers 0..255, regardless
+    of the value type of the configured BinaryType: that type may be signed
+    (`char`), unsigned (`std::uint8_t`), or not an integer at all
+    (`std::byte`), none of which @ref dump_integer can handle uniformly.
+    */
+    static std::uint8_t to_byte_value(binary_char_t x) noexcept
+    {
+        return static_cast<std::uint8_t>(x);
+    }
+
+    // templates to avoid warnings about useless casts
+    template <typename NumberType, enable_if_t<std::is_signed<NumberType>::value, int> = 0>
+    bool is_negative_number(NumberType x)
+    {
+        return x < 0;
+    }
+
+    template < typename NumberType, enable_if_t <std::is_unsigned<NumberType>::value, int > = 0 >
+    bool is_negative_number(NumberType /*unused*/)
+    {
+        return false;
+    }
+
+    /*!
+    @brief write the decimal representation of the byte @a value
+
+    A binary value's bytes are always in [0, 255], so writing one needs neither
+    the digit counting nor the 64-bit arithmetic that @ref dump_integer does for
+    an arbitrary number, and the three digits it takes at most are written
+    straight into the write buffer.
+
+    Any byte type that is not a plain unsigned byte is converted to its
+    @ref to_byte_value "byte value" and left to @ref dump_integer, so a signed
+    or non-integral BinaryType::value_type (`char`, `std::byte`, ...) still
+    dumps as 0..255.
+    */
+    template<typename ByteType>
+    void dump_byte(const ByteType value)
+    {
+        dump_byte(value, std::integral_constant < bool,
+                  std::is_unsigned<ByteType>::value && sizeof(ByteType) == 1
+                  && !std::is_same<ByteType, bool>::value > {});
+    }
+
+    template<typename ByteType>
+    void dump_byte(const ByteType value, std::false_type /*is_plain_byte*/)
+    {
+        dump_integer(to_byte_value(value));
+    }
+
+    template<typename ByteType>
+    void dump_byte(const ByteType value, std::true_type /*is_plain_byte*/)
+    {
+        if (JSON_HEDLEY_UNLIKELY(write_buffer_pos + 3 > write_buffer.size()))
+        {
+            flush();
+        }
+
+        const auto byte = static_cast<unsigned>(value);
+        // Accumulate the offset in a local and store it back once. Writing
+        // through write_buffer[] is a char write, which may alias any object,
+        // so with the member updated in place the compiler has to reload and
+        // store it around every digit - measured 2.4x slower on a dump of a
+        // multi-megabyte binary value.
+        std::size_t pos = write_buffer_pos;
+
+        if (byte >= 100)
+        {
+            write_buffer[pos++] = static_cast<char>('0' + (byte / 100));
+            write_buffer[pos++] = static_cast<char>('0' + ((byte / 10) % 10));
+        }
+        else if (byte >= 10)
+        {
+            write_buffer[pos++] = static_cast<char>('0' + (byte / 10));
+        }
+
+        write_buffer[pos++] = static_cast<char>('0' + (byte % 10));
+
+        write_buffer_pos = pos;
+    }
+
+    /*!
+    @brief dump an integer
+
+    Dump a given integer, appending it to @ref write_buffer. Works internally with
+    @a number_buffer.
+
+    @param[in] x  integer number (signed or unsigned) to dump
+    @tparam NumberType either @a number_integer_t or @a number_unsigned_t
+    */
+    template < typename NumberType, detail::enable_if_t <
+                   std::is_integral<NumberType>::value ||
+                   std::is_same<NumberType, number_unsigned_t>::value ||
+                   std::is_same<NumberType, number_integer_t>::value,
+                   int > = 0 >
+    void dump_integer(NumberType x)
+    {
+        static constexpr std::array<std::array<char, 2>, 100> digits_to_99
+        {
+            {
+                {{'0', '0'}}, {{'0', '1'}}, {{'0', '2'}}, {{'0', '3'}}, {{'0', '4'}}, {{'0', '5'}}, {{'0', '6'}}, {{'0', '7'}}, {{'0', '8'}}, {{'0', '9'}},
+                {{'1', '0'}}, {{'1', '1'}}, {{'1', '2'}}, {{'1', '3'}}, {{'1', '4'}}, {{'1', '5'}}, {{'1', '6'}}, {{'1', '7'}}, {{'1', '8'}}, {{'1', '9'}},
+                {{'2', '0'}}, {{'2', '1'}}, {{'2', '2'}}, {{'2', '3'}}, {{'2', '4'}}, {{'2', '5'}}, {{'2', '6'}}, {{'2', '7'}}, {{'2', '8'}}, {{'2', '9'}},
+                {{'3', '0'}}, {{'3', '1'}}, {{'3', '2'}}, {{'3', '3'}}, {{'3', '4'}}, {{'3', '5'}}, {{'3', '6'}}, {{'3', '7'}}, {{'3', '8'}}, {{'3', '9'}},
+                {{'4', '0'}}, {{'4', '1'}}, {{'4', '2'}}, {{'4', '3'}}, {{'4', '4'}}, {{'4', '5'}}, {{'4', '6'}}, {{'4', '7'}}, {{'4', '8'}}, {{'4', '9'}},
+                {{'5', '0'}}, {{'5', '1'}}, {{'5', '2'}}, {{'5', '3'}}, {{'5', '4'}}, {{'5', '5'}}, {{'5', '6'}}, {{'5', '7'}}, {{'5', '8'}}, {{'5', '9'}},
+                {{'6', '0'}}, {{'6', '1'}}, {{'6', '2'}}, {{'6', '3'}}, {{'6', '4'}}, {{'6', '5'}}, {{'6', '6'}}, {{'6', '7'}}, {{'6', '8'}}, {{'6', '9'}},
+                {{'7', '0'}}, {{'7', '1'}}, {{'7', '2'}}, {{'7', '3'}}, {{'7', '4'}}, {{'7', '5'}}, {{'7', '6'}}, {{'7', '7'}}, {{'7', '8'}}, {{'7', '9'}},
+                {{'8', '0'}}, {{'8', '1'}}, {{'8', '2'}}, {{'8', '3'}}, {{'8', '4'}}, {{'8', '5'}}, {{'8', '6'}}, {{'8', '7'}}, {{'8', '8'}}, {{'8', '9'}},
+                {{'9', '0'}}, {{'9', '1'}}, {{'9', '2'}}, {{'9', '3'}}, {{'9', '4'}}, {{'9', '5'}}, {{'9', '6'}}, {{'9', '7'}}, {{'9', '8'}}, {{'9', '9'}},
+            }
+        };
+
+        // special case for "0"
+        if (x == 0)
+        {
+            put_char('0');
+            return;
+        }
+
+        // use a pointer to fill the buffer
+        auto buffer_ptr = number_buffer.begin(); // NOLINT(llvm-qualified-auto,readability-qualified-auto)
+
+        number_unsigned_t abs_value;
+
+        unsigned int n_chars{};
+
+        if (is_negative_number(x))
+        {
+            *buffer_ptr = '-';
+            abs_value = remove_sign(static_cast<number_integer_t>(x));
+
+            // account one more byte for the minus sign
+            n_chars = 1 + count_digits(abs_value);
+        }
+        else
+        {
+            abs_value = static_cast<number_unsigned_t>(x);
+            n_chars = count_digits(abs_value);
+        }
+
+        // spare 1 byte for '\0'
+        JSON_ASSERT(n_chars < number_buffer.size() - 1);
+
+        // jump to the end to generate the string from backward,
+        // so we later avoid reversing the result
+        buffer_ptr += static_cast<typename decltype(number_buffer)::difference_type>(n_chars);
+
+        // Fast int2ascii implementation inspired by "Fastware" talk by Andrei Alexandrescu
+        // See: https://www.youtube.com/watch?v=o4-CwDo2zpg
+        while (abs_value >= 100)
+        {
+            const auto digits_index = static_cast<unsigned>((abs_value % 100));
+            abs_value /= 100;
+            *(--buffer_ptr) = digits_to_99[digits_index][1];
+            *(--buffer_ptr) = digits_to_99[digits_index][0];
+        }
+
+        if (abs_value >= 10)
+        {
+            const auto digits_index = static_cast<unsigned>(abs_value);
+            *(--buffer_ptr) = digits_to_99[digits_index][1];
+            *(--buffer_ptr) = digits_to_99[digits_index][0];
+        }
+        else
+        {
+            *(--buffer_ptr) = static_cast<char>('0' + abs_value);
+        }
+
+        put_buffer(number_buffer, n_chars);
+    }
+
+    /*!
+    @brief dump a floating-point number
+
+    Dump a given floating-point number, appending it to @ref write_buffer. Works internally
+    with @a number_buffer.
+
+    @param[in] x  floating-point number to dump
+    */
+    void dump_float(number_float_t x)
+    {
+        // NaN / inf
+        if (!std::isfinite(x))
+        {
+            put_literal("null");
+            return;
+        }
+
+        // If number_float_t is an IEEE-754 single or double precision number,
+        // use the Grisu2 algorithm to produce short numbers which are
+        // guaranteed to round-trip, using strtof and strtod, resp.
+        //
+        // NB: The test below works if <long double> == <double>.
+        static constexpr bool is_ieee_single_or_double
+            = (std::numeric_limits<number_float_t>::is_iec559 && std::numeric_limits<number_float_t>::digits == 24 && std::numeric_limits<number_float_t>::max_exponent == 128) ||
+              (std::numeric_limits<number_float_t>::is_iec559 && std::numeric_limits<number_float_t>::digits == 53 && std::numeric_limits<number_float_t>::max_exponent == 1024);
+
+        dump_float(x, std::integral_constant<bool, is_ieee_single_or_double>());
+    }
+
+    void dump_float(number_float_t x, std::true_type /*is_ieee_single_or_double*/)
+    {
+        auto* begin = number_buffer.data();
+        auto* end = ::nlohmann::detail::to_chars(begin, begin + number_buffer.size(), x);
+
+        put_buffer(number_buffer, static_cast<std::size_t>(end - begin));
+    }
+
+    JSON_HEDLEY_NON_NULL(1)
+    static int snprintf_float(char* buf, std::size_t size, int d, double x)
+    {
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
+        return (std::snprintf)(buf, size, "%.*g", d, x);
+    }
+
+    JSON_HEDLEY_NON_NULL(1)
+    static int snprintf_float(char* buf, std::size_t size, int d, long double x)
+    {
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg,hicpp-vararg)
+        return (std::snprintf)(buf, size, "%.*Lg", d, x);
+    }
+
+    void dump_float(number_float_t x, std::false_type /*is_ieee_single_or_double*/)
+    {
+        // get the number of digits for a float -> text -> float round-trip
+        static constexpr auto d = std::numeric_limits<number_float_t>::max_digits10;
+
+        // the actual conversion
+        std::ptrdiff_t len = snprintf_float(number_buffer.data(), number_buffer.size(), d, x);
+
+        // negative value indicates an error
+        JSON_ASSERT(len > 0);
+        // check if the buffer was large enough
+        JSON_ASSERT(static_cast<std::size_t>(len) < number_buffer.size());
+
+        // look up the locale's thousands separator and decimal point now,
+        // matching what snprintf_float() just used (see lexer::get_decimal_point())
+        const auto* loc = std::localeconv();
+        JSON_ASSERT(loc != nullptr);
+        const char thousands_sep = (loc->thousands_sep == nullptr) ? '\0' : *loc->thousands_sep;
+        const char decimal_point = (loc->decimal_point == nullptr) ? '\0' : *loc->decimal_point;
+
+        // erase thousands separators
+        if (thousands_sep != '\0')
+        {
+            // NOLINTNEXTLINE(readability-qualified-auto,llvm-qualified-auto): std::remove returns an iterator, see https://github.com/nlohmann/json/issues/3081
+            const auto end = std::remove(number_buffer.begin(), number_buffer.begin() + len, thousands_sep);
+            std::fill(end, number_buffer.end(), '\0');
+            JSON_ASSERT((end - number_buffer.begin()) <= len);
+            len = (end - number_buffer.begin());
+        }
+
+        // convert decimal point to '.'
+        if (decimal_point != '\0' && decimal_point != '.')
+        {
+            // NOLINTNEXTLINE(readability-qualified-auto,llvm-qualified-auto): std::find returns an iterator, see https://github.com/nlohmann/json/issues/3081
+            const auto dec_pos = std::find(number_buffer.begin(), number_buffer.end(), decimal_point);
+            if (dec_pos != number_buffer.end())
+            {
+                *dec_pos = '.';
+            }
+        }
+
+        put_buffer(number_buffer, static_cast<std::size_t>(len));
+
+        // determine if we need to append ".0"
+        const bool value_is_int_like =
+            std::none_of(number_buffer.begin(), number_buffer.begin() + len + 1,
+                         [](char c)
+        {
+            return c == '.' || c == 'e';
+        });
+
+        if (value_is_int_like)
+        {
+            put_literal(".0");
+        }
+    }
+
+    /*
+     * Overload to make the compiler happy while it is instantiating
+     * dump_integer for number_unsigned_t.
+     * Must never be called.
+     */
+    number_unsigned_t remove_sign(number_unsigned_t x)
+    {
+        JSON_ASSERT(false); // NOLINT(cert-dcl03-c,hicpp-static-assert,misc-static-assert) LCOV_EXCL_LINE
+        return x; // LCOV_EXCL_LINE
+    }
+
+    /*
+     * Helper function for dump_integer
+     *
+     * This function takes a negative signed integer and returns its absolute
+     * value as an unsigned integer. The plus/minus shuffling is necessary as we
+     * cannot directly remove the sign of an arbitrary signed integer as the
+     * absolute values of INT_MIN and INT_MAX are usually not the same. See
+     * #1708 for details.
+     */
+    number_unsigned_t remove_sign(number_integer_t x) noexcept
+    {
+        JSON_ASSERT(x < 0);
+        return static_cast<number_unsigned_t>(-(x + 1)) + 1;
+    }
+
+  private:
+    /// the output of the serializer (non-owning; the adapter lives at the call site)
+    output_adapter_protocol<char>* o = nullptr;
+
+    /// a (hopefully) large enough character buffer
+    std::array<char, 64> number_buffer{{}};
+
+    /// string buffer
+    std::array<char, 512> string_buffer{{}};
+
+    /// the indentation character
+    const char indent_char;
+
+    /// whether to pretty-print the output
+    const bool pretty_print;
+
+    /// whether to escape non-ASCII characters with \\uXXXX sequences
+    const bool ensure_ascii;
+
+    /// the indent level
+    const std::size_t indent_step;
+
+    /// error_handler how to react on decoding errors
+    const error_handler_t error_handler;
+
+    /// buffer collecting output before it is flushed to the output adapter, so
+    /// that the many small structural writes become few bulk writes
+    static constexpr std::size_t write_buffer_size = 1024;
+    std::array<char, write_buffer_size> write_buffer{{}};
+    /// number of valid bytes currently held in @ref write_buffer
+    std::size_t write_buffer_pos = 0;
+};
+
+}  // namespace detail
+NLOHMANN_JSON_NAMESPACE_END

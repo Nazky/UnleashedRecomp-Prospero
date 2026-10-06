@@ -1,0 +1,1170 @@
+//     __ _____ _____ _____
+//  __|  |   __|     |   | |  JSON for Modern C++
+// |  |  |__   |  |  | | | |  version 3.12.0
+// |_____|_____|_____|_|___|  https://github.com/nlohmann/json
+//
+// SPDX-FileCopyrightText: 2013-2026 Niels Lohmann <https://nlohmann.me>
+// SPDX-License-Identifier: MIT
+
+#pragma once
+
+#include <algorithm> // find_if, min
+#include <cstddef>
+#include <limits> // numeric_limits
+#include <string> // string
+#include <type_traits> // enable_if_t
+#include <utility> // move, pair
+#include <vector> // vector
+
+#include <nlohmann/detail/exceptions.hpp>
+#include <nlohmann/detail/input/lexer.hpp>
+#include <nlohmann/detail/macro_scope.hpp>
+#include <nlohmann/detail/meta/cpp_future.hpp>
+#include <nlohmann/detail/string_concat.hpp>
+NLOHMANN_JSON_NAMESPACE_BEGIN
+
+/*!
+@brief SAX interface
+
+This class describes the SAX interface used by @ref nlohmann::json::sax_parse.
+Each function is called in different situations while the input is parsed. The
+boolean return value informs the parser whether to continue processing the
+input.
+*/
+template<typename BasicJsonType>
+struct json_sax
+{
+    using number_integer_t = typename BasicJsonType::number_integer_t;
+    using number_unsigned_t = typename BasicJsonType::number_unsigned_t;
+    using number_float_t = typename BasicJsonType::number_float_t;
+    using string_t = typename BasicJsonType::string_t;
+    using binary_t = typename BasicJsonType::binary_t;
+
+    /*!
+    @brief a null value was read
+    @return whether parsing should proceed
+    */
+    virtual bool null() = 0;
+
+    /*!
+    @brief a boolean value was read
+    @param[in] val  boolean value
+    @return whether parsing should proceed
+    */
+    virtual bool boolean(bool val) = 0;
+
+    /*!
+    @brief an integer number was read
+    @param[in] val  integer value
+    @return whether parsing should proceed
+    */
+    virtual bool number_integer(number_integer_t val) = 0;
+
+    /*!
+    @brief an unsigned integer number was read
+    @param[in] val  unsigned integer value
+    @return whether parsing should proceed
+    */
+    virtual bool number_unsigned(number_unsigned_t val) = 0;
+
+    /*!
+    @brief a floating-point number was read
+    @param[in] val  floating-point value
+    @param[in] s    raw token value
+    @return whether parsing should proceed
+    */
+    virtual bool number_float(number_float_t val, const string_t& s) = 0;
+
+    /*!
+    @brief a string value was read
+    @param[in] val  string value
+    @return whether parsing should proceed
+    @note It is safe to move the passed string value.
+    */
+    virtual bool string(string_t& val) = 0;
+
+    /*!
+    @brief a binary value was read
+    @param[in] val  binary value
+    @return whether parsing should proceed
+    @note It is safe to move the passed binary value.
+    */
+    virtual bool binary(binary_t& val) = 0;
+
+    /*!
+    @brief the beginning of an object was read
+    @param[in] elements  number of object elements or -1 if unknown
+    @return whether parsing should proceed
+    @note binary formats may report the number of elements
+    */
+    virtual bool start_object(std::size_t elements) = 0;
+
+    /*!
+    @brief an object key was read
+    @param[in] val  object key
+    @return whether parsing should proceed
+    @note It is safe to move the passed string.
+    */
+    virtual bool key(string_t& val) = 0;
+
+    /*!
+    @brief the end of an object was read
+    @return whether parsing should proceed
+    */
+    virtual bool end_object() = 0;
+
+    /*!
+    @brief the beginning of an array was read
+    @param[in] elements  number of array elements or -1 if unknown
+    @return whether parsing should proceed
+    @note binary formats may report the number of elements
+    */
+    virtual bool start_array(std::size_t elements) = 0;
+
+    /*!
+    @brief the end of an array was read
+    @return whether parsing should proceed
+    */
+    virtual bool end_array() = 0;
+
+    /*!
+    @brief a parse error occurred
+    @param[in] position    the position in the input where the error occurs
+    @param[in] last_token  the last read token
+    @param[in] ex          an exception object describing the error
+    @return whether parsing should proceed (must return false)
+    */
+    virtual bool parse_error(std::size_t position,
+                             const std::string& last_token,
+                             const detail::exception& ex) = 0;
+
+    json_sax() = default;
+    json_sax(const json_sax&) = default;
+    json_sax(json_sax&&) noexcept = default;
+    json_sax& operator=(const json_sax&) = default;
+    json_sax& operator=(json_sax&&) noexcept = default;
+    virtual ~json_sax() = default;
+};
+
+namespace detail
+{
+constexpr std::size_t unknown_size()
+{
+    return (std::numeric_limits<std::size_t>::max)();
+}
+
+/*!
+@brief reserve capacity for @a len elements in array @a arr
+
+Reserving upfront avoids repeated reallocations while the elements are added,
+but the reservation is capped so a bogus/hostile length (which is not bounded
+by max_size(), unlike e.g. std::vector) cannot trigger an oversized allocation
+for a small or truncated input.
+
+The overload below is selected for array types without reserve() (e.g.,
+std::deque), which are then left untouched.
+*/
+template<typename ArrayType>
+auto reserve_array(ArrayType& arr, std::size_t len, priority_tag<1> /*unused*/)
+-> decltype(arr.reserve(len), void())
+{
+    constexpr std::size_t reserve_cap = 16384;
+    arr.reserve((std::min)(len, reserve_cap));
+}
+
+template<typename ArrayType>
+inline void reserve_array(ArrayType& /*arr*/, std::size_t /*len*/, priority_tag<0> /*unused*/)
+{}
+
+#if JSON_DIAGNOSTIC_POSITIONS
+/*!
+@brief set the diagnostic positions of a value the DOM SAX parsers just stored
+
+Shared by json_sax_dom_parser and json_sax_dom_callback_parser. basic_json
+befriends this struct, as the position members are private.
+*/
+struct diagnostic_positions
+{
+    /*!
+    @param[in,out] v  the value that was just parsed
+    @param[in] lexer  the lexer that read it, or nullptr to leave @a v alone
+    */
+    template<typename BasicJsonType, typename LexerType>
+    static void set_from_lexer(BasicJsonType& v, LexerType* lexer)
+    {
+        if (lexer)
+        {
+            // Lexer has read past the current field value, so set the end position to the current position.
+            // The start position will be set below based on the length of the string representation
+            // of the value.
+            v.end_position = lexer->get_position();
+
+            switch (v.type())
+            {
+                case value_t::boolean:
+                {
+                    // 4 and 5 are the string length of "true" and "false"
+                    v.start_position = v.end_position - (v.m_data.m_value.boolean ? 4 : 5);
+                    break;
+                }
+
+                case value_t::null:
+                {
+                    // 4 is the string length of "null"
+                    v.start_position = v.end_position - 4;
+                    break;
+                }
+
+                case value_t::string:
+                {
+                    // escape sequences make the token longer than the value it
+                    // parses to, so the start position cannot be derived from
+                    // the value; use the offset the lexer recorded instead
+                    v.start_position = lexer->get_token_start_position();
+                    break;
+                }
+
+                case value_t::discarded:
+                {
+                    // an object or array the callback of
+                    // json_sax_dom_callback_parser rejected has no position
+                    v.end_position = std::string::npos;
+                    v.start_position = v.end_position;
+                    break;
+                }
+
+                case value_t::binary:
+                case value_t::number_integer:
+                case value_t::number_unsigned:
+                case value_t::number_float:
+                {
+                    v.start_position = v.end_position - lexer->get_string().size();
+                    break;
+                }
+
+                case value_t::object:
+                case value_t::array:
+                {
+                    // object and array are handled in start_object() and start_array() handlers
+                    // skip setting the values here.
+                    break;
+                }
+                default: // LCOV_EXCL_LINE
+                    // Handle all possible types discretely, default handler should never be reached.
+                    JSON_ASSERT(false); // NOLINT(cert-dcl03-c,hicpp-static-assert,misc-static-assert) LCOV_EXCL_LINE
+            }
+        }
+    }
+};
+#endif
+
+/*!
+@brief SAX implementation to create a JSON value from SAX events
+
+This class implements the @ref json_sax interface and processes the SAX events
+to create a JSON value which makes it basically a DOM parser. The structure or
+hierarchy of the JSON value is managed by the stack `ref_stack` which contains
+a pointer to the respective array or object for each recursion depth.
+
+After successful parsing, the value that is passed by reference to the
+constructor contains the parsed value.
+
+@tparam BasicJsonType  the JSON type
+*/
+template<typename BasicJsonType, typename InputAdapterType>
+class json_sax_dom_parser
+{
+  public:
+    using number_integer_t = typename BasicJsonType::number_integer_t;
+    using number_unsigned_t = typename BasicJsonType::number_unsigned_t;
+    using number_float_t = typename BasicJsonType::number_float_t;
+    using string_t = typename BasicJsonType::string_t;
+    using binary_t = typename BasicJsonType::binary_t;
+    using lexer_t = lexer<BasicJsonType, InputAdapterType>;
+
+    /*!
+    @param[in,out] r  reference to a JSON value that is manipulated while
+                       parsing
+    @param[in] allow_exceptions_  whether parse errors yield exceptions
+    */
+    explicit json_sax_dom_parser(BasicJsonType& r, const bool allow_exceptions_ = true, lexer_t* lexer_ = nullptr)
+        : root(r), allow_exceptions(allow_exceptions_), m_lexer_ref(lexer_)
+    {}
+
+    // make class move-only
+    json_sax_dom_parser(const json_sax_dom_parser&) = delete;
+    json_sax_dom_parser(json_sax_dom_parser&&) = default; // NOLINT(hicpp-noexcept-move,performance-noexcept-move-constructor)
+    json_sax_dom_parser& operator=(const json_sax_dom_parser&) = delete;
+    json_sax_dom_parser& operator=(json_sax_dom_parser&&) = default; // NOLINT(hicpp-noexcept-move,performance-noexcept-move-constructor)
+    ~json_sax_dom_parser() = default;
+
+    bool null()
+    {
+        handle_value(nullptr);
+        return true;
+    }
+
+    bool boolean(bool val)
+    {
+        handle_value(val);
+        return true;
+    }
+
+    bool number_integer(number_integer_t val)
+    {
+        handle_value(val);
+        return true;
+    }
+
+    bool number_unsigned(number_unsigned_t val)
+    {
+        handle_value(val);
+        return true;
+    }
+
+    bool number_float(number_float_t val, const string_t& /*unused*/)
+    {
+        handle_value(val);
+        return true;
+    }
+
+    bool string(string_t& val)
+    {
+        // json_sax documents that the passed value may be moved from,
+        // so hand the buffer over instead of copying it
+        handle_value(std::move(val));
+        return true;
+    }
+
+    bool binary(binary_t& val)
+    {
+        // json_sax documents that the passed value may be moved from,
+        // so hand the buffer over instead of copying it
+        handle_value(std::move(val));
+        return true;
+    }
+
+    bool start_object(std::size_t len)
+    {
+        ref_stack.push_back(handle_value(BasicJsonType::value_t::object));
+
+#if JSON_DIAGNOSTIC_POSITIONS
+        // Manually set the start position of the object here.
+        // Ensure this is after the call to handle_value to ensure correct start position.
+        if (m_lexer_ref)
+        {
+            // Lexer has read the first character of the object, so
+            // subtract 1 from the position to get the correct start position.
+            ref_stack.back()->start_position = m_lexer_ref->get_position() - 1;
+        }
+#endif
+
+        if (JSON_HEDLEY_UNLIKELY(len != detail::unknown_size() && len > ref_stack.back()->max_size()))
+        {
+            return parse_error(0, "", out_of_range::create(408, concat("excessive object size: ", std::to_string(len)), ref_stack.back()));
+        }
+
+        return true;
+    }
+
+    bool key(string_t& val)
+    {
+        JSON_ASSERT(!ref_stack.empty());
+        JSON_ASSERT(ref_stack.back()->is_object());
+
+        // add null at the given key and store the reference for later
+        object_element = &(ref_stack.back()->m_data.m_value.object->operator[](val));
+        return true;
+    }
+
+    bool end_object()
+    {
+        JSON_ASSERT(!ref_stack.empty());
+        JSON_ASSERT(ref_stack.back()->is_object());
+
+#if JSON_DIAGNOSTIC_POSITIONS
+        if (m_lexer_ref)
+        {
+            // Lexer's position is past the closing brace, so set that as the end position.
+            ref_stack.back()->end_position = m_lexer_ref->get_position();
+        }
+#endif
+
+        ref_stack.back()->set_parents();
+        ref_stack.pop_back();
+        return true;
+    }
+
+    bool start_array(std::size_t len)
+    {
+        ref_stack.push_back(handle_value(BasicJsonType::value_t::array));
+
+#if JSON_DIAGNOSTIC_POSITIONS
+        // Manually set the start position of the array here.
+        // Ensure this is after the call to handle_value to ensure correct start position.
+        if (m_lexer_ref)
+        {
+            ref_stack.back()->start_position = m_lexer_ref->get_position() - 1;
+        }
+#endif
+
+        if (JSON_HEDLEY_UNLIKELY(len != detail::unknown_size() && len > ref_stack.back()->max_size()))
+        {
+            return parse_error(0, "", out_of_range::create(408, concat("excessive array size: ", std::to_string(len)), ref_stack.back()));
+        }
+
+        if (len != detail::unknown_size())
+        {
+            reserve_array(*ref_stack.back()->m_data.m_value.array, len, priority_tag<1> {});
+        }
+
+        return true;
+    }
+
+    bool end_array()
+    {
+        JSON_ASSERT(!ref_stack.empty());
+        JSON_ASSERT(ref_stack.back()->is_array());
+
+#if JSON_DIAGNOSTIC_POSITIONS
+        if (m_lexer_ref)
+        {
+            // Lexer's position is past the closing bracket, so set that as the end position.
+            ref_stack.back()->end_position = m_lexer_ref->get_position();
+        }
+#endif
+
+        ref_stack.back()->set_parents();
+        ref_stack.pop_back();
+        return true;
+    }
+
+    template<class Exception>
+    bool parse_error(std::size_t /*unused*/, const std::string& /*unused*/,
+                     const Exception& ex)
+    {
+        errored = true;
+        static_cast<void>(ex);
+        if (allow_exceptions)
+        {
+            JSON_THROW(ex);
+        }
+        return false;
+    }
+
+    constexpr bool is_errored() const
+    {
+        return errored;
+    }
+
+  private:
+
+    /*!
+    @invariant If the ref stack is empty, then the passed value will be the new
+               root.
+    @invariant If the ref stack contains a value, then it is an array or an
+               object to which we can add elements
+    */
+    template<typename Value>
+    JSON_HEDLEY_RETURNS_NON_NULL
+    BasicJsonType* handle_value(Value&& v)
+    {
+        if (ref_stack.empty())
+        {
+            root = BasicJsonType(std::forward<Value>(v));
+
+#if JSON_DIAGNOSTIC_POSITIONS
+            diagnostic_positions::set_from_lexer(root, m_lexer_ref);
+#endif
+
+            return &root;
+        }
+
+        JSON_ASSERT(ref_stack.back()->is_array() || ref_stack.back()->is_object());
+
+        if (ref_stack.back()->is_array())
+        {
+            ref_stack.back()->m_data.m_value.array->emplace_back(std::forward<Value>(v));
+
+#if JSON_DIAGNOSTIC_POSITIONS
+            diagnostic_positions::set_from_lexer(ref_stack.back()->m_data.m_value.array->back(), m_lexer_ref);
+#endif
+
+            return &(ref_stack.back()->m_data.m_value.array->back());
+        }
+
+        JSON_ASSERT(ref_stack.back()->is_object());
+        JSON_ASSERT(object_element);
+        *object_element = BasicJsonType(std::forward<Value>(v));
+
+#if JSON_DIAGNOSTIC_POSITIONS
+        diagnostic_positions::set_from_lexer(*object_element, m_lexer_ref);
+#endif
+
+        return object_element;
+    }
+
+    /// the parsed JSON value
+    BasicJsonType& root;
+    /// stack to model hierarchy of values
+    std::vector<BasicJsonType*> ref_stack {};
+    /// helper to hold the reference for the next object element
+    BasicJsonType* object_element = nullptr;
+    /// whether a syntax error occurred
+    bool errored = false;
+    /// whether to throw exceptions in case of errors
+    const bool allow_exceptions = true;
+    /// the lexer reference to obtain the current position
+    lexer_t* m_lexer_ref = nullptr;
+};
+
+template<typename BasicJsonType, typename InputAdapterType>
+class json_sax_dom_callback_parser
+{
+  public:
+    using number_integer_t = typename BasicJsonType::number_integer_t;
+    using number_unsigned_t = typename BasicJsonType::number_unsigned_t;
+    using number_float_t = typename BasicJsonType::number_float_t;
+    using string_t = typename BasicJsonType::string_t;
+    using binary_t = typename BasicJsonType::binary_t;
+    using parser_callback_t = typename BasicJsonType::parser_callback_t;
+    using parse_event_t = typename BasicJsonType::parse_event_t;
+    using lexer_t = lexer<BasicJsonType, InputAdapterType>;
+
+    json_sax_dom_callback_parser(BasicJsonType& r,
+                                 parser_callback_t cb,
+                                 const bool allow_exceptions_ = true,
+                                 lexer_t* lexer_ = nullptr)
+        : root(r), callback(std::move(cb)), allow_exceptions(allow_exceptions_), m_lexer_ref(lexer_)
+    {
+        keep_stack.push_back(true);
+    }
+
+    // make class move-only
+    json_sax_dom_callback_parser(const json_sax_dom_callback_parser&) = delete;
+    json_sax_dom_callback_parser(json_sax_dom_callback_parser&&) = default; // NOLINT(hicpp-noexcept-move,performance-noexcept-move-constructor)
+    json_sax_dom_callback_parser& operator=(const json_sax_dom_callback_parser&) = delete;
+    json_sax_dom_callback_parser& operator=(json_sax_dom_callback_parser&&) = default; // NOLINT(hicpp-noexcept-move,performance-noexcept-move-constructor)
+    ~json_sax_dom_callback_parser() = default;
+
+    bool null()
+    {
+        handle_value(nullptr);
+        return true;
+    }
+
+    bool boolean(bool val)
+    {
+        handle_value(val);
+        return true;
+    }
+
+    bool number_integer(number_integer_t val)
+    {
+        handle_value(val);
+        return true;
+    }
+
+    bool number_unsigned(number_unsigned_t val)
+    {
+        handle_value(val);
+        return true;
+    }
+
+    bool number_float(number_float_t val, const string_t& /*unused*/)
+    {
+        handle_value(val);
+        return true;
+    }
+
+    bool string(string_t& val)
+    {
+        // json_sax documents that the passed value may be moved from,
+        // so hand the buffer over instead of copying it
+        handle_value(std::move(val));
+        return true;
+    }
+
+    bool binary(binary_t& val)
+    {
+        // json_sax documents that the passed value may be moved from,
+        // so hand the buffer over instead of copying it
+        handle_value(std::move(val));
+        return true;
+    }
+
+    bool start_object(std::size_t len)
+    {
+        // check callback for object start; not called inside a discarded container
+        const bool keep = keep_stack.back() && callback(static_cast<int>(ref_stack.size()), parse_event_t::object_start, discarded);
+        keep_stack.push_back(keep);
+
+        // the key this object will be stored under, read before handle_value()
+        // may consume it; kept in lockstep with ref_stack so end_object() can
+        // find the object in its parent again
+        container_key_stack.push_back(current_key());
+
+        auto val = handle_value(BasicJsonType::value_t::object, true);
+        ref_stack.push_back(val.second);
+
+        if (ref_stack.back())
+        {
+
+#if JSON_DIAGNOSTIC_POSITIONS
+            // Manually set the start position of the object here.
+            // Ensure this is after the call to handle_value to ensure correct start position.
+            if (m_lexer_ref)
+            {
+                // Lexer has read the first character of the object, so
+                // subtract 1 from the position to get the correct start position.
+                ref_stack.back()->start_position = m_lexer_ref->get_position() - 1;
+            }
+#endif
+
+            // check object limit
+            if (JSON_HEDLEY_UNLIKELY(len != detail::unknown_size() && len > ref_stack.back()->max_size()))
+            {
+                return parse_error(0, "", out_of_range::create(408, concat("excessive object size: ", std::to_string(len)), ref_stack.back()));
+            }
+        }
+        return true;
+    }
+
+    bool key(string_t& val)
+    {
+        if (!keep_stack.back() || !ref_stack.back())
+        {
+            // the object is not stored: the value of this key is dropped in
+            // handle_value() without touching the key stacks
+            if (keep_stack.back())
+            {
+                BasicJsonType k = BasicJsonType(val);
+                static_cast<void>(callback(static_cast<int>(ref_stack.size()), parse_event_t::key, k));
+            }
+            return true;
+        }
+
+        BasicJsonType k = BasicJsonType(val);
+
+        // check callback for the key
+        const bool keep = callback(static_cast<int>(ref_stack.size()), parse_event_t::key, k);
+        key_keep_stack.push_back(keep);
+        // remember the key so a rejected value can be erased without searching
+        // the object for it (kept in lockstep with key_keep_stack)
+        key_stack.push_back(val);
+
+        // add discarded value at the given key and store the reference for later
+        if (keep && ref_stack.back())
+        {
+            auto& obj = *ref_stack.back()->m_data.m_value.object;
+            const auto it = obj.find(val);
+            if (it != obj.end())
+            {
+                // this is a duplicate key (legal in JSON); remember its
+                // current value so it can be restored later if the new
+                // value is rejected by the callback, instead of being
+                // erased together with the discarded placeholder
+                duplicate_key_stash.emplace_back(&(it->second), it->second);
+            }
+            object_element = &(obj[val] = discarded);
+        }
+
+        return true;
+    }
+
+    bool end_object()
+    {
+        if (ref_stack.back())
+        {
+            if (!callback(static_cast<int>(ref_stack.size()) - 1, parse_event_t::object_end, *ref_stack.back()))
+            {
+                // discard object, unless this slot holds a duplicate key's
+                // previous value pending restoration, in which case that
+                // value is restored instead of being discarded
+                if (!resolve_duplicate_key_stash(ref_stack.back(), true))
+                {
+                    *ref_stack.back() = discarded;
+
+#if JSON_DIAGNOSTIC_POSITIONS
+                    // Set start/end positions for discarded object.
+                    diagnostic_positions::set_from_lexer(*ref_stack.back(), m_lexer_ref);
+#endif
+                }
+            }
+            else
+            {
+
+#if JSON_DIAGNOSTIC_POSITIONS
+                if (m_lexer_ref)
+                {
+                    // Lexer's position is past the closing brace, so set that as the end position.
+                    ref_stack.back()->end_position = m_lexer_ref->get_position();
+                }
+#endif
+
+                ref_stack.back()->set_parents();
+                // this object is finally, definitively kept; drop any
+                // pending duplicate-key stash entry for its slot since it
+                // can no longer be restored
+                resolve_duplicate_key_stash(ref_stack.back(), false);
+            }
+        }
+
+        JSON_ASSERT(!ref_stack.empty());
+        JSON_ASSERT(!keep_stack.empty());
+        JSON_ASSERT(!container_key_stack.empty());
+        ref_stack.pop_back();
+        keep_stack.pop_back();
+        const string_t object_key = std::move(container_key_stack.back());
+        container_key_stack.pop_back();
+
+        if (!ref_stack.empty() && ref_stack.back() && ref_stack.back()->is_structured())
+        {
+            // remove discarded value
+            remove_discarded_value(*ref_stack.back(), object_key);
+        }
+
+        return true;
+    }
+
+    bool start_array(std::size_t len)
+    {
+        const bool keep = keep_stack.back() && callback(static_cast<int>(ref_stack.size()), parse_event_t::array_start, discarded);
+        keep_stack.push_back(keep);
+
+        // see start_object()
+        container_key_stack.push_back(current_key());
+
+        auto val = handle_value(BasicJsonType::value_t::array, true);
+        ref_stack.push_back(val.second);
+
+        if (ref_stack.back())
+        {
+
+#if JSON_DIAGNOSTIC_POSITIONS
+            // Manually set the start position of the array here.
+            // Ensure this is after the call to handle_value to ensure correct start position.
+            if (m_lexer_ref)
+            {
+                // Lexer has read the first character of the array, so
+                // subtract 1 from the position to get the correct start position.
+                ref_stack.back()->start_position = m_lexer_ref->get_position() - 1;
+            }
+#endif
+
+            // check array limit
+            if (JSON_HEDLEY_UNLIKELY(len != detail::unknown_size() && len > ref_stack.back()->max_size()))
+            {
+                return parse_error(0, "", out_of_range::create(408, concat("excessive array size: ", std::to_string(len)), ref_stack.back()));
+            }
+
+            if (len != detail::unknown_size())
+            {
+                reserve_array(*ref_stack.back()->m_data.m_value.array, len, priority_tag<1> {});
+            }
+        }
+
+        return true;
+    }
+
+    bool end_array()
+    {
+        bool keep = true;
+        const bool stored = ref_stack.back() != nullptr;
+
+        if (stored)
+        {
+            keep = callback(static_cast<int>(ref_stack.size()) - 1, parse_event_t::array_end, *ref_stack.back());
+            if (keep)
+            {
+
+#if JSON_DIAGNOSTIC_POSITIONS
+                if (m_lexer_ref)
+                {
+                    // Lexer's position is past the closing bracket, so set that as the end position.
+                    ref_stack.back()->end_position = m_lexer_ref->get_position();
+                }
+#endif
+
+                ref_stack.back()->set_parents();
+                // this array is finally, definitively kept; drop any
+                // pending duplicate-key stash entry for its slot since it
+                // can no longer be restored
+                resolve_duplicate_key_stash(ref_stack.back(), false);
+            }
+            else
+            {
+                // discard array, unless this slot holds a duplicate key's
+                // previous value pending restoration, in which case that
+                // value is restored instead of being discarded
+                if (!resolve_duplicate_key_stash(ref_stack.back(), true))
+                {
+                    *ref_stack.back() = discarded;
+
+#if JSON_DIAGNOSTIC_POSITIONS
+                    // Set start/end positions for discarded array.
+                    diagnostic_positions::set_from_lexer(*ref_stack.back(), m_lexer_ref);
+#endif
+                }
+            }
+        }
+
+        JSON_ASSERT(!ref_stack.empty());
+        JSON_ASSERT(!keep_stack.empty());
+        JSON_ASSERT(!container_key_stack.empty());
+        ref_stack.pop_back();
+        keep_stack.pop_back();
+        const string_t object_key = std::move(container_key_stack.back());
+        container_key_stack.pop_back();
+
+        // remove discarded value
+        if (!ref_stack.empty() && ref_stack.back())
+        {
+            if (!keep && ref_stack.back()->is_array())
+            {
+                ref_stack.back()->m_data.m_value.array->pop_back();
+            }
+            else if ((!keep || !stored) && ref_stack.back()->is_object())
+            {
+                // the array is either still stored under its key or was never
+                // stored, leaving the placeholder key() wrote; both show up as
+                // a discarded member of the parent object
+                remove_discarded_value(*ref_stack.back(), object_key);
+            }
+        }
+
+        return true;
+    }
+
+    template<class Exception>
+    bool parse_error(std::size_t /*unused*/, const std::string& /*unused*/,
+                     const Exception& ex)
+    {
+        errored = true;
+        static_cast<void>(ex);
+        if (allow_exceptions)
+        {
+            JSON_THROW(ex);
+        }
+        return false;
+    }
+
+    constexpr bool is_errored() const
+    {
+        return errored;
+    }
+
+  private:
+
+    /// if there is a pending duplicate-key stash entry for this exact slot,
+    /// remove it from the stash; if restore_value is true, the stashed
+    /// previous value is moved back into the slot first (use this when the
+    /// new value at that slot was rejected); otherwise the stash entry is
+    /// simply dropped (use this when the new value was accepted, so it
+    /// correctly supersedes the old one and no restore should ever happen
+    /// for this slot again)
+    /// @return whether a matching stash entry was found (and processed)
+    bool resolve_duplicate_key_stash(BasicJsonType* slot, bool restore_value)
+    {
+        const auto it = std::find_if(duplicate_key_stash.begin(), duplicate_key_stash.end(),
+                                     [slot](const std::pair<BasicJsonType*, BasicJsonType>& entry)
+        {
+            return entry.first == slot;
+        });
+
+        if (it == duplicate_key_stash.end())
+        {
+            return false;
+        }
+
+        if (restore_value)
+        {
+            *slot = std::move(it->second);
+        }
+        duplicate_key_stash.erase(it);
+        return true;
+    }
+
+    /*!
+    @brief the key the value now being handled will be stored under
+
+    Empty unless the enclosing container is an object, in which case it is the
+    key of the pending key() event. Read before handle_value() consumes that
+    key, so it is also correct when the value never reaches its parent.
+    */
+    string_t current_key() const
+    {
+        if (!ref_stack.empty() && ref_stack.back() && ref_stack.back()->is_object()
+                && !key_stack.empty())
+        {
+            return key_stack.back();
+        }
+        return string_t{};
+    }
+
+    /*!
+    @brief remove the discarded value the callback rejected from its parent,
+    unless it is a duplicate key's slot with a stashed previous value, in
+    which case that previous value is restored instead
+
+    A rejected value can only ever be the one most recently added to @a parent:
+    the last element of an array, or the placeholder key() stored under @a key
+    in an object. Looking there directly makes this O(1) resp. O(log n), where
+    searching @a parent for it made a filtering parse quadratic in the number of
+    members of a single container.
+
+    Finding no discarded value there means none was stored in the first place -
+    the callback rejected the value before it reached its parent - so there is
+    nothing to remove.
+
+    @param[in,out] parent  the container to remove the rejected value from
+    @param[in] key  the key the value was stored under; unused for arrays
+    */
+    void remove_discarded_value(BasicJsonType& parent, const string_t& key)
+    {
+        if (parent.is_array())
+        {
+            auto& array = *parent.m_data.m_value.array;
+            if (!array.empty() && array.back().is_discarded())
+            {
+                array.pop_back();
+            }
+        }
+        else if (parent.is_object())
+        {
+            auto& object = *parent.m_data.m_value.object;
+            const auto it = object.find(key);
+            if (it != object.end() && it->second.is_discarded())
+            {
+                // a duplicate key's slot has a stashed previous value that
+                // must be restored instead of being erased
+                if (!resolve_duplicate_key_stash(&it->second, true))
+                {
+                    object.erase(it);
+                }
+            }
+        }
+    }
+
+    /*!
+    @param[in] v  value to add to the JSON value we build during parsing
+    @param[in] skip_callback  whether we should skip calling the callback
+               function; this is required after start_array() and
+               start_object() SAX events, because otherwise we would call the
+               callback function with an empty array or object, respectively.
+
+    @invariant If the ref stack is empty, then the passed value will be the new
+               root.
+    @invariant If the ref stack contains a value, then it is an array or an
+               object to which we can add elements
+
+    @return pair of boolean (whether value should be kept) and pointer (to the
+            passed value in the ref_stack hierarchy; nullptr if not kept)
+    */
+    template<typename Value>
+    std::pair<bool, BasicJsonType*> handle_value(Value&& v, const bool skip_callback = false)
+    {
+        JSON_ASSERT(!keep_stack.empty());
+
+        // do not handle this value if we know it would be added to a discarded
+        // container
+        if (!keep_stack.back())
+        {
+            return {false, nullptr};
+        }
+
+        // create value
+        auto value = BasicJsonType(std::forward<Value>(v));
+
+#if JSON_DIAGNOSTIC_POSITIONS
+        diagnostic_positions::set_from_lexer(value, m_lexer_ref);
+#endif
+
+        // check callback
+        const bool keep = skip_callback || callback(static_cast<int>(ref_stack.size()), parse_event_t::value, value);
+
+        // do not handle this value if we just learnt it shall be discarded
+        if (!keep)
+        {
+            // if the value was to become an object member, key() already
+            // stored a placeholder for it that has to be removed again
+            if (!ref_stack.empty() && ref_stack.back() && ref_stack.back()->is_object())
+            {
+                JSON_ASSERT(!key_keep_stack.empty());
+                JSON_ASSERT(!key_stack.empty());
+                const bool placeholder_stored = key_keep_stack.back();
+                key_keep_stack.pop_back();
+                const string_t key = std::move(key_stack.back());
+                key_stack.pop_back();
+                if (placeholder_stored)
+                {
+                    remove_discarded_value(*ref_stack.back(), key);
+                }
+            }
+            return {false, nullptr};
+        }
+
+        if (ref_stack.empty())
+        {
+            root = std::move(value);
+            return {true, & root};
+        }
+
+        // skip this value if we already decided to skip the parent
+        // (https://github.com/nlohmann/json/issues/971#issuecomment-413678360)
+        if (!ref_stack.back())
+        {
+            return {false, nullptr};
+        }
+
+        // we now only expect arrays and objects
+        JSON_ASSERT(ref_stack.back()->is_array() || ref_stack.back()->is_object());
+
+        // array
+        if (ref_stack.back()->is_array())
+        {
+            ref_stack.back()->m_data.m_value.array->emplace_back(std::move(value));
+            return {true, & (ref_stack.back()->m_data.m_value.array->back())};
+        }
+
+        // object
+        JSON_ASSERT(ref_stack.back()->is_object());
+        // check if we should store an element for the current key
+        JSON_ASSERT(!key_keep_stack.empty());
+        JSON_ASSERT(!key_stack.empty());
+        const bool store_element = key_keep_stack.back();
+        key_keep_stack.pop_back();
+        key_stack.pop_back();
+
+        if (!store_element)
+        {
+            return {false, nullptr};
+        }
+
+        JSON_ASSERT(object_element);
+        *object_element = std::move(value);
+        if (!skip_callback)
+        {
+            // this scalar value finally, definitively replaces whatever was
+            // at this slot; drop any pending duplicate-key stash entry for
+            // it since it can no longer be restored (a container value at
+            // this slot is resolved later, in end_object()/end_array(),
+            // since skip_callback is true for the placeholder handling that
+            // happens here for those)
+            resolve_duplicate_key_stash(object_element, false);
+        }
+        return {true, object_element};
+    }
+
+    /// the parsed JSON value
+    BasicJsonType& root;
+    /// stack to model hierarchy of values
+    std::vector<BasicJsonType*> ref_stack {};
+    /// stack to manage which values to keep
+    std::vector<bool> keep_stack {}; // NOLINT(readability-redundant-member-init)
+    /// stack to manage which object keys to keep
+    std::vector<bool> key_keep_stack {}; // NOLINT(readability-redundant-member-init)
+    /// the keys key() stored a placeholder for, in lockstep with key_keep_stack
+    std::vector<string_t> key_stack {}; // NOLINT(readability-redundant-member-init)
+    /// for each open container, the key it is stored under in its parent
+    /// object, in lockstep with ref_stack; unused where the parent is not an
+    /// object
+    std::vector<string_t> container_key_stack {}; // NOLINT(readability-redundant-member-init)
+    /// helper to hold the reference for the next object element
+    BasicJsonType* object_element = nullptr;
+    /// stash of (slot pointer, previous value) for object members that
+    /// already existed when key() was called again for the same key
+    /// (duplicate keys); used to restore the previous value if the new
+    /// value is later rejected by the callback, instead of erasing the
+    /// member entirely
+    std::vector<std::pair<BasicJsonType*, BasicJsonType>> duplicate_key_stash {};
+    /// whether a syntax error occurred
+    bool errored = false;
+    /// callback function
+    const parser_callback_t callback = nullptr;
+    /// whether to throw exceptions in case of errors
+    const bool allow_exceptions = true;
+    /// a discarded value for the callback
+    BasicJsonType discarded = BasicJsonType::value_t::discarded;
+    /// the lexer reference to obtain the current position
+    lexer_t* m_lexer_ref = nullptr;
+};
+
+template<typename BasicJsonType>
+class json_sax_acceptor
+{
+  public:
+    using number_integer_t = typename BasicJsonType::number_integer_t;
+    using number_unsigned_t = typename BasicJsonType::number_unsigned_t;
+    using number_float_t = typename BasicJsonType::number_float_t;
+    using string_t = typename BasicJsonType::string_t;
+    using binary_t = typename BasicJsonType::binary_t;
+
+    bool null()
+    {
+        return true;
+    }
+
+    bool boolean(bool /*unused*/)
+    {
+        return true;
+    }
+
+    bool number_integer(number_integer_t /*unused*/)
+    {
+        return true;
+    }
+
+    bool number_unsigned(number_unsigned_t /*unused*/)
+    {
+        return true;
+    }
+
+    bool number_float(number_float_t /*unused*/, const string_t& /*unused*/)
+    {
+        return true;
+    }
+
+    bool string(string_t& /*unused*/)
+    {
+        return true;
+    }
+
+    bool binary(binary_t& /*unused*/)
+    {
+        return true;
+    }
+
+    bool start_object(std::size_t /*unused*/ = detail::unknown_size())
+    {
+        return true;
+    }
+
+    bool key(string_t& /*unused*/)
+    {
+        return true;
+    }
+
+    bool end_object()
+    {
+        return true;
+    }
+
+    bool start_array(std::size_t /*unused*/ = detail::unknown_size())
+    {
+        return true;
+    }
+
+    bool end_array()
+    {
+        return true;
+    }
+
+    bool parse_error(std::size_t /*unused*/, const std::string& /*unused*/, const detail::exception& /*unused*/)
+    {
+        return false;
+    }
+};
+
+}  // namespace detail
+NLOHMANN_JSON_NAMESPACE_END
