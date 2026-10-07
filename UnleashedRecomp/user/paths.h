@@ -12,6 +12,7 @@ extern std::filesystem::path g_executableRoot;
 
 bool CheckPortable();
 std::filesystem::path BuildUserPath();
+void InitializeUserPath();
 const std::filesystem::path& GetUserPath();
 
 inline std::filesystem::path GetGamePath()

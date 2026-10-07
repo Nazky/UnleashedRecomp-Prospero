@@ -69,6 +69,16 @@ if ! $skip_sdk && [[ ! -f $sdk/.ps5-sdk-revision || $(<"$sdk/.ps5-sdk-revision")
     }
     sdk_tree=$(mktemp -d)
     git -C "$sdk_fork" archive "$sdk_revision" | tar -x -C "$sdk_tree"
+    # The pinned SDK's include/platform install recipes expand DESTDIR into
+    # unquoted shell words. Quote those paths so a project directory containing
+    # spaces or parentheses (for example, "TestVibration (2)") can install.
+    for sdk_makefile in "$sdk_tree/include/Makefile" "$sdk_tree/platform/Makefile"; do
+        if [[ ! -f "$sdk_makefile" ]]; then
+            echo "ERROR: missing pinned SDK install makefile: $sdk_makefile" >&2
+            exit 2
+        fi
+        sed -i 's@\$(DESTDIR)@"$(DESTDIR)"@g' "$sdk_makefile"
+    done
     bash "$sdk_tree/platform/tools/setup-sdk.sh" "$sdk" "$sdk_revision" "$cache" >&2
     rm -rf -- "$sdk_tree"
     restore_sdk_permissions
@@ -95,13 +105,18 @@ if [[ -z $zlib_library || ! -f $zlib_root/usr/include/zlib.h ||
     printf '%s  %s\n' "$zlib_hash" "$zlib_archive" | sha256sum --check --strict >/dev/null
     rm -rf -- "$zlib_source" "$zlib_root"
     tar -xzf "$zlib_archive" -C "$zlib_directory"
-    mkdir -p "$zlib_root"
     jobs=${BUILD_JOBS:-$(nproc 2>/dev/null || printf '2')}
+    # zlib 1.3.2's install recipes also leave DESTDIR unquoted. Install into a
+    # space-free /tmp staging path, then copy the finished /usr tree into .deps.
+    zlib_stage=$(mktemp -d /tmp/ps5-zlib-install.XXXXXX)
     (
+        trap 'rm -rf -- "$zlib_stage"' EXIT
         cd "$zlib_source"
         CC="$compiler" AR="$archiver" RANLIB="$ranlib" ./configure --static --prefix=/usr
         make -j "$jobs" CC="$compiler" AR="$archiver" RANLIB="$ranlib"
-        make DESTDIR="$zlib_root" install
+        make DESTDIR="$zlib_stage" install
+        mkdir -p "$zlib_root"
+        cp -a "$zlib_stage/usr" "$zlib_root/"
     ) >"$zlib_directory/build.log"
     printf '%s\n' "$zlib_version" >"$zlib_stamp"
     zlib_library=$(find "$zlib_root" -type f -name libz.a -print -quit 2>/dev/null || true)

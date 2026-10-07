@@ -12,8 +12,11 @@
 # Usage:
 #   1) Auto-sync mode (called automatically by `make` / `tools/build.sh`):
 #      Simply place/replace `sce_sys/pic0.png`, `sce_sys/pic1.png`, `sce_sys/icon0.png`,
-#      or `sce_sys/snd0.{wav,mp3,ogg,flac,at9}` and run:
-#        bash tools/prepare-assets.sh
+#      or `sce_sys/snd0.{wav,mp3,ogg,flac}` and run `bash tools/prepare-assets.sh`.
+#      Auto-sync prefers editable audio inputs (newest-modified wins); `snd0.source.at9` is fallback.
+#      The upstream encoder adds no fixed gain; its source fades and peak-safety limit remain.
+#      A preserved `.source.at9` fallback is copied without lossy re-encoding.
+#      Use `--audio path/to/music.ext` to force an input.
 #
 #   2) Explicit CLI mode:
 #        bash tools/prepare-assets.sh \
@@ -39,6 +42,10 @@ PIC1_IN=""
 AUDIO_IN=""
 AUDIO_DURATION="174"
 AT9_TOOL="${PS4_AT9TOOL:-}"
+# Recipe metadata only: the upstream encoder path applies no extra fixed gain.
+AUDIO_GAIN_DB="0dB"
+AUDIO_RECIPE_VERSION="8"
+AUDIO_RECIPE_STAMP="$ROOT/build/asset-state/snd0.at9.recipe"
 FORCE_SYNC=0
 
 while (($# > 0)); do
@@ -67,6 +74,76 @@ while (($# > 0)); do
             exit 2 ;;
     esac
 done
+
+audio_recipe_for() {
+    local src="$1"
+    local source_hash converter_hash pipeline_hash
+    source_hash="$(sha256sum "$src")"
+    source_hash="${source_hash%% *}"
+    converter_hash="$(sha256sum "$ROOT/tools/wav_to_at9/wav_to_at9.cpp")"
+    converter_hash="${converter_hash%% *}"
+    pipeline_hash="$(sha256sum "$ROOT/tools/prepare-assets.sh")"
+    pipeline_hash="${pipeline_hash%% *}"
+    printf 'version=%s;gain=%s;source=%s;converter=%s;pipeline=%s\n' \
+        "$AUDIO_RECIPE_VERSION" "$AUDIO_GAIN_DB" "$source_hash" "$converter_hash" "$pipeline_hash"
+}
+
+audio_needs_sync() {
+    local src="$1"
+    local dst="$SCE_SYS/snd0.at9"
+    local expected_recipe output_hash expected_stamp current_stamp
+
+    if [[ "$FORCE_SYNC" == "1" || ! -f "$dst" || "$src" -nt "$dst" ]]; then
+        return 0
+    fi
+
+    expected_recipe="$(audio_recipe_for "$src")"
+    output_hash="$(sha256sum "$dst")"
+    output_hash="${output_hash%% *}"
+    expected_stamp="${expected_recipe};output=${output_hash}"
+    [[ ! -f "$AUDIO_RECIPE_STAMP" ]] && return 0
+    current_stamp="$(<"$AUDIO_RECIPE_STAMP")"
+    [[ "$current_stamp" != "$expected_stamp" ]]
+}
+
+select_auto_audio_source() {
+    local source_at9="$SCE_SYS/snd0.source.at9"
+    local best="" candidate extension
+
+    # Editable audio files take precedence over the preserved ATRAC9 source;
+    # if several exist, the most recently modified one wins.
+    for candidate in "$SCE_SYS"/snd0.*; do
+        [[ -f "$candidate" ]] || continue
+        extension="${candidate##*.}"
+        extension="${extension,,}"
+        case "$extension" in
+            wav|mp3|ogg|flac|m4a|aac|opus|wma) ;;
+            *) continue ;;
+        esac
+        if [[ -z "$best" || "$candidate" -nt "$best" ]]; then
+            best="$candidate"
+        fi
+    done
+
+    if [[ -n "$best" ]]; then
+        printf '%s' "$best"
+    elif [[ -f "$source_at9" ]]; then
+        printf '%s' "$source_at9"
+    fi
+}
+
+record_audio_recipe() {
+    local src="$1"
+    local recipe output_hash tmp
+    recipe="$(audio_recipe_for "$src")"
+    output_hash="$(sha256sum "$SCE_SYS/snd0.at9")"
+    output_hash="${output_hash%% *}"
+    recipe="${recipe};output=${output_hash}"
+    mkdir -p "${AUDIO_RECIPE_STAMP%/*}"
+    tmp="$(mktemp "${AUDIO_RECIPE_STAMP}.tmp.XXXXXX")"
+    printf '%s' "$recipe" > "$tmp"
+    mv -f "$tmp" "$AUDIO_RECIPE_STAMP"
+}
 
 ensure_converter() {
     if [[ ! -x "$CONVERTER" || "$ROOT/tools/png_to_bc7_dds/png_to_bc7_dds.cpp" -nt "$CONVERTER" ]]; then
@@ -111,7 +188,7 @@ encode_audio_to_at9() {
     case "${src,,}" in
         *.at9)
             if [[ "$(realpath "$src")" != "$(realpath -m "$dst")" ]]; then
-                echo "==> [assets] Installing $src -> $dst..."
+                echo "==> [assets] Installing pre-encoded ATRAC9 $src -> $dst..."
                 cp -f "$src" "$dst"
             fi
             ;;
@@ -120,6 +197,7 @@ encode_audio_to_at9() {
                 command -v ffmpeg >/dev/null 2>&1 || { echo "Error: ffmpeg is required when using --at9-tool." >&2; exit 1; }
                 local tmp_wav
                 tmp_wav="$(mktemp --suffix=.wav)"
+                # Keep external encoders at the same neutral 0 dB gain as the native path.
                 ffmpeg -y -v error -i "$src" -vn -sn -dn -t "$AUDIO_DURATION" -ar 48000 -ac 2 -c:a pcm_s16le "$tmp_wav"
                 echo "==> [assets] Encoding $src -> $dst via $AT9_TOOL..."
                 if [[ "$AT9_TOOL" == *.exe ]] && command -v wine >/dev/null 2>&1 && ! grep -qi microsoft /proc/version 2>/dev/null; then
@@ -168,6 +246,7 @@ encode_audio_to_at9() {
             exit 1
             ;;
     esac
+    record_audio_recipe "$src"
 }
 
 mkdir -p "$SCE_SYS"
@@ -237,20 +316,18 @@ elif [[ -f "$SCE_SYS/pic1.dds" && ! -f "$SCE_SYS/pic0.dds" ]]; then
     cp -f "$SCE_SYS/pic1.dds" "$SCE_SYS/pic0.dds"
 fi
 
-# 4. Explicit --audio OR auto-sync sce_sys/snd0.{wav,mp3,ogg,flac,m4a,aac} -> sce_sys/snd0.at9
+# 4. Explicit --audio OR auto-sync the preferred source -> sce_sys/snd0.at9
 if [[ -n "$AUDIO_IN" ]]; then
     [[ -f "$AUDIO_IN" ]] || { echo "Audio file not found: $AUDIO_IN" >&2; exit 1; }
     encode_audio_to_at9 "$AUDIO_IN" "$SCE_SYS/snd0.at9"
 else
-    for ext in wav mp3 ogg flac m4a aac; do
-        cand="$SCE_SYS/snd0.$ext"
-        if [[ -f "$cand" ]]; then
-            if [[ "$FORCE_SYNC" == "1" || ! -f "$SCE_SYS/snd0.at9" || "$cand" -nt "$SCE_SYS/snd0.at9" ]]; then
-                encode_audio_to_at9 "$cand" "$SCE_SYS/snd0.at9"
-            fi
-            break
+    audio_source="$(select_auto_audio_source)"
+    if [[ -n "$audio_source" ]]; then
+        echo "==> [assets] Auto-selected audio source: $audio_source"
+        if audio_needs_sync "$audio_source"; then
+            encode_audio_to_at9 "$audio_source" "$SCE_SYS/snd0.at9"
         fi
-    done
+    fi
 fi
 
 bash "$ROOT/tools/validate-assets.sh" "$SCE_SYS"

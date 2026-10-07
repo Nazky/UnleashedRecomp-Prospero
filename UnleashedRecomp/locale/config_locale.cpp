@@ -632,12 +632,279 @@ CONFIG_DEFINE_LOCALE(VSync)
 // Japanese Notes: This localization should include furigana.
 CONFIG_DEFINE_LOCALE(FPS)
 {
-    { ELanguage::English,  { "FPS", "Set the max frame rate the game can run at.\n\nWARNING: this may introduce glitches at frame rates higher than 60 FPS." } },
-    { ELanguage::Japanese, { "フレームレート[上限:じょうげん]", "ゲームの\u200B[最大:さいだい]フレームレートを\u200B[設定:せってい]できます\n\n[警告:けいこく]: 60 FPSを\u200B[超:こ]えるフレームレートで\u200B[不具合:ふぐあい]が\u200B[発生:はっせい]する\u200B[可能性:かのうせい]が\u200Bあります" } },
-    { ELanguage::German,   { "FPS", "Setze die maximale Anzahl der Bilder pro Sekunde, die das Spiel darstellen kann.\n\nWARNUNG: Das Spiel kann bei höheren FPS als 60 ungewolltes Verhalten aufweisen." } },
-    { ELanguage::French,   { "IPS", "Détermine la fréquence d'images maximale du jeu.\n\nATTENTION : cela peut entraîner des problèmes à des taux de rafraîchissement supérieurs à 60 IPS." } },
-    { ELanguage::Spanish,  { "FPS", "Establece la tasa de fotogramas máxima a la que puede correr el juego.\n\nADVERTENCIA: esto puede introducir fallos en tasas mayores a 60 FPS." } },
-    { ELanguage::Italian,  { "FPS", "Imposta il frame rate massimo del gioco.\n\nATTENZIONE: questa opzione può causare dei glitch a frame rate più alti di 60 FPS." } }
+    { ELanguage::English,  { "FPS", "Set the maximum frame rate. PS5 choices are 30, 60, 90, and 120 FPS; the default remains 60 FPS." } },
+    { ELanguage::Japanese, { "フレームレート[上限:じょうげん]", "ゲームの[最大:さいだい]フレームレートを[設定:せってい]します。PS5では30、60、90、120 FPSから[選択:せんたく]できます。[初期設定:しょきせってい]は60 FPSです" } },
+    { ELanguage::German,   { "FPS", "Lege die maximale Bildrate fest. Auf PS5 stehen 30, 60, 90 und 120 FPS zur Auswahl; der Standard bleibt 60 FPS." } },
+    { ELanguage::French,   { "IPS", "Définit la limite d'images par seconde. Sur PS5, choisissez 30, 60, 90 ou 120 IPS ; la valeur par défaut reste 60 IPS." } },
+    { ELanguage::Spanish,  { "FPS", "Establece el límite de fotogramas. En PS5 puedes elegir 30, 60, 90 o 120 FPS; el valor predeterminado sigue siendo 60 FPS." } },
+    { ELanguage::Italian,  { "FPS", "Imposta il limite di frame rate. Su PS5 puoi scegliere 30, 60, 90 o 120 FPS; il valore predefinito resta 60 FPS." } }
+};
+
+// Japanese Notes: This localization should include furigana.
+CONFIG_DEFINE_LOCALE(AnisotropicFiltering)
+{
+    { ELanguage::English,  { "Anisotropic Filtering", "Choose None (0), 2x, 4x, 8x, or 16x anisotropic filtering. 16x is the default; None disables it." } },
+    { ELanguage::Japanese, { "[異方性:いほうせい]フィルタリング", "なし (0)、2x、4x、8x、16xから[選択:せんたく]します。16xが[既定値:きていち]です" } },
+    { ELanguage::German,   { "Anisotrope Filterung", "Wähle Keine (0), 2x, 4x, 8x oder 16x anisotrope Filterung. 16x ist der Standard; Keine deaktiviert sie." } },
+    { ELanguage::French,   { "Filtrage anisotrope", "Choisissez Aucun (0), 2x, 4x, 8x ou 16x. Le réglage par défaut est 16x ; Aucun désactive le filtrage." } },
+    { ELanguage::Spanish,  { "Filtrado anisotrópico", "Elige Ninguno (0), 2x, 4x, 8x o 16x. El valor predeterminado es 16x; Ninguno desactiva el filtrado." } },
+    { ELanguage::Italian,  { "Filtro anisotropico", "Scegli Nessuno (0), 2x, 4x, 8x o 16x. Il valore predefinito è 16x; Nessuno disattiva il filtro." } }
+};
+
+// Japanese Notes: This localization should include furigana.
+CONFIG_DEFINE_LOCALE(DepthOfFieldQuality)
+{
+    { ELanguage::English,  { "Depth of Field Quality", "Choose the depth-of-field blur quality. Lower settings use smaller blur kernels; Auto preserves the game's resolution-based choice." } },
+    { ELanguage::Japanese, { "[被写界深度:ひしゃかいしんど]の[品質:ひんしつ]", "[被写界深度:ひしゃかいしんど]のぼかし[品質:ひんしつ]を[選択:せんたく]します。[低:ひく]い[設定:せってい]ではぼかしカーネルが[小:ちい]さくなり、[自動:じどう]ではゲームの[解像度:かいぞうど]に[応:おう]じた[選択:せんたく]が[維持:いじ]されます" } },
+    { ELanguage::German,   { "Tiefenschärfequalität", "Legt die Qualität der Tiefenschärfe fest. Niedrigere Einstellungen verwenden kleinere Unschärfekerne; Auto behält die auflösungsabhängige Spielauswahl bei." } },
+    { ELanguage::French,   { "Qualité de profondeur de champ", "Choisissez la qualité du flou de profondeur de champ. Les réglages bas utilisent des noyaux plus petits ; Auto conserve le choix du jeu selon la résolution." } },
+    { ELanguage::Spanish,  { "Calidad de profundidad de campo", "Elige la calidad del desenfoque de profundidad de campo. Los ajustes bajos usan kernels menores; Automático conserva la elección del juego según la resolución." } },
+    { ELanguage::Italian,  { "Qualità profondità di campo", "Scegli la qualità della sfocatura della profondità di campo. Le impostazioni basse usano kernel più piccoli; Auto mantiene la scelta del gioco in base alla risoluzione." } }
+};
+
+// Japanese Notes: This localization should include furigana.
+CONFIG_DEFINE_ENUM_LOCALE(EDepthOfFieldQuality)
+{
+    {
+        ELanguage::English,
+        {
+            { EDepthOfFieldQuality::Auto,   { "AUTO",   "Automatic: use the game's default depth-of-field quality." } },
+            { EDepthOfFieldQuality::Low,    { "LOW",    "Low: use a smaller blur kernel to reduce depth-of-field work." } },
+            { EDepthOfFieldQuality::Medium, { "MEDIUM", "Medium depth-of-field quality." } },
+            { EDepthOfFieldQuality::High,   { "HIGH",   "High depth-of-field quality." } },
+            { EDepthOfFieldQuality::Ultra,  { "ULTRA",  "Ultra depth-of-field quality." } }
+        }
+    },
+    {
+        ELanguage::Japanese,
+        {
+            { EDepthOfFieldQuality::Auto,   { "[自動:じどう]", "[自動:じどう]: ゲームの[既定:きてい]の[被写界深度:ひしゃかいしんど]を[使用:しよう]します" } },
+            { EDepthOfFieldQuality::Low,    { "[低:てい]", "[低:てい]: [小:ちい]さいぼかしカーネルを[使:つか]い、[被写界深度:ひしゃかいしんど]の[処理負荷:しょりふか]を[減:へ]らします" } },
+            { EDepthOfFieldQuality::Medium, { "[中:ちゅう]", "[中:ちゅう]の[被写界深度:ひしゃかいしんど]の[品質:ひんしつ]です" } },
+            { EDepthOfFieldQuality::High,   { "[高:こう]", "[高:こう]い[被写界深度:ひしゃかいしんど]の[品質:ひんしつ]です" } },
+            { EDepthOfFieldQuality::Ultra,  { "[最高:さいこう]", "[最高:さいこう]の[被写界深度:ひしゃかいしんど]の[品質:ひんしつ]です" } }
+        }
+    },
+    {
+        ELanguage::German,
+        {
+            { EDepthOfFieldQuality::Auto,   { "AUTO",   "Automatisch: Die standardmäßige Tiefenschärfe des Spiels wird verwendet." } },
+            { EDepthOfFieldQuality::Low,    { "NIEDRIG", "Niedrig: Ein kleinerer Unschärfekernel reduziert den Aufwand für Tiefenschärfe." } },
+            { EDepthOfFieldQuality::Medium, { "MITTEL", "Mittlere Tiefenschärfequalität." } },
+            { EDepthOfFieldQuality::High,   { "HOCH",   "Hohe Tiefenschärfequalität." } },
+            { EDepthOfFieldQuality::Ultra,  { "ULTRA",  "Höchste Tiefenschärfequalität." } }
+        }
+    },
+    {
+        ELanguage::French,
+        {
+            { EDepthOfFieldQuality::Auto,   { "AUTO",   "Automatique : utilise la qualité de profondeur de champ par défaut du jeu." } },
+            { EDepthOfFieldQuality::Low,    { "BASSE",  "Basse : un noyau de flou réduit le coût du traitement de la profondeur de champ." } },
+            { EDepthOfFieldQuality::Medium, { "MOYENNE", "Qualité moyenne de profondeur de champ." } },
+            { EDepthOfFieldQuality::High,   { "ÉLEVÉE", "Qualité élevée de profondeur de champ." } },
+            { EDepthOfFieldQuality::Ultra,  { "ULTRA",  "Qualité ultra de profondeur de champ." } }
+        }
+    },
+    {
+        ELanguage::Spanish,
+        {
+            { EDepthOfFieldQuality::Auto,   { "AUTO",   "Automático: usa la calidad de profundidad de campo predeterminada del juego." } },
+            { EDepthOfFieldQuality::Low,    { "BAJA",   "Baja: usa un desenfoque menor para reducir el trabajo de profundidad de campo." } },
+            { EDepthOfFieldQuality::Medium, { "MEDIA",  "Calidad media de profundidad de campo." } },
+            { EDepthOfFieldQuality::High,   { "ALTA",   "Calidad alta de profundidad de campo." } },
+            { EDepthOfFieldQuality::Ultra,  { "ULTRA",  "Calidad ultra de profundidad de campo." } }
+        }
+    },
+    {
+        ELanguage::Italian,
+        {
+            { EDepthOfFieldQuality::Auto,   { "AUTO",   "Automatico: usa la qualità predefinita della profondità di campo del gioco." } },
+            { EDepthOfFieldQuality::Low,    { "BASSA",  "Bassa: usa un kernel di sfocatura più piccolo per ridurre il lavoro sulla profondità di campo." } },
+            { EDepthOfFieldQuality::Medium, { "MEDIA",  "Qualità media della profondità di campo." } },
+            { EDepthOfFieldQuality::High,   { "ALTA",   "Qualità alta della profondità di campo." } },
+            { EDepthOfFieldQuality::Ultra,  { "ULTRA",  "Qualità ultra della profondità di campo." } }
+        }
+    }
+};
+
+// Japanese Notes: This localization should include furigana.
+CONFIG_DEFINE_LOCALE(ShowSystemInfo)
+{
+    { ELanguage::English,  { "Enable System Info Overlay", "Show the game title and FPS. Choose Simple to show only these, or Advanced to enable additional metrics and per-item visibility switches." } },
+    { ELanguage::Japanese, { "システム[情報:じょうほう]パネルを[有効:ゆうこう]にする", "ゲーム[名:めい]とFPSを[表示:ひょうじ]します。シンプルではこの2[項目:こうもく]のみ、アドバンスでは[追加:ついか]の[情報:じょうほう]と[項目:こうもく]ごとの[表示設定:ひょうじせってい]を[使用:しよう]します。" } },
+    { ELanguage::German,   { "Systeminfo-Overlay aktivieren", "Zeigt Spieltitel und FPS. Einfach zeigt nur diese beiden; Erweitert bietet zusätzliche Messwerte und Ein-/Aus-Schalter pro Eintrag." } },
+    { ELanguage::French,   { "Activer le panneau système", "Affiche le titre du jeu et les IPS. Simple n'affiche que ces éléments ; Avancé ajoute des mesures et des interrupteurs individuels." } },
+    { ELanguage::Spanish,  { "Activar panel de información", "Muestra el título del juego y los FPS. Simple muestra solo estos elementos; Avanzado añade métricas y controles individuales de visibilidad." } },
+    { ELanguage::Italian,  { "Attiva pannello info di sistema", "Mostra il titolo del gioco e gli FPS. Semplice mostra solo questi elementi; Avanzata aggiunge metriche e interruttori di visibilità individuali." } }
+};
+
+// Japanese Notes: This localization should include furigana.
+CONFIG_DEFINE_LOCALE(SystemInfoAccentPreset)
+{
+    { ELanguage::English,  { "Overlay Accent Color", "Choose from 256 color presets for the overlay. Press A to edit; use the D-pad to select a swatch and L1/R1 to change pages. Press A to confirm or B to cancel." } },
+    { ELanguage::Japanese, { "オーバーレイのアクセント[色:いろ]", "オーバーレイの[色:いろ]を256[色:しょく]のプリセットから[選択:せんたく]します。Aボタンで[編集:へんしゅう]し、[方向:ほうこう]キーで[色:いろ]を[選択:せんたく]、L1/R1でページを[切替:きりか]えます。Aボタンで[確定:かくてい]、Bボタンで[取消:とりけし]します。" } },
+    { ELanguage::German,   { "Overlay-Akzentfarbe", "Wähle für das Overlay aus 256 Farbvorlagen. Mit A bearbeiten, per Steuerkreuz eine Farbe wählen und mit L1/R1 die Seiten wechseln. Mit A bestätigen oder mit B abbrechen." } },
+    { ELanguage::French,   { "Couleur d’accent de l’overlay", "Choisissez parmi 256 couleurs prédéfinies pour l’overlay. Appuyez sur A pour modifier, utilisez la croix pour choisir et L1/R1 pour changer de page. A confirme, B annule." } },
+    { ELanguage::Spanish,  { "Color de acento de la superposición", "Elige entre 256 colores predefinidos para la superposición. Pulsa A para editar; usa la cruceta para elegir y L1/R1 para cambiar de página. A confirma y B cancela." } },
+    { ELanguage::Italian,  { "Colore accento overlay", "Scegli tra 256 colori predefiniti per l'overlay. Premi A per modificare; usa la croce direzionale per scegliere e L1/R1 per cambiare pagina. A conferma, B annulla." } }
+};
+
+// Japanese Notes: This localization should include furigana.
+CONFIG_DEFINE_LOCALE(OverlayMode)
+{
+    { ELanguage::English,  { "Overlay Mode", "Simple shows only the game title and FPS. Advanced shows the extra items enabled below." } },
+    { ELanguage::Japanese, { "オーバーレイ[表示:ひょうじ]モード", "シンプルはゲーム[名:めい]とFPSのみ、アドバンスは[下:した]で[有効:ゆうこう]にした[項目:こうもく]も[表示:ひょうじ]します。" } },
+    { ELanguage::German,   { "Overlay-Modus", "Einfach zeigt nur Spieltitel und FPS. Erweitert zeigt zusätzlich die unten aktivierten Einträge." } },
+    { ELanguage::French,   { "Mode du panneau", "Simple affiche uniquement le titre du jeu et les IPS. Avancé affiche aussi les éléments activés ci-dessous." } },
+    { ELanguage::Spanish,  { "Modo de superposición", "Simple muestra solo el título del juego y los FPS. Avanzado también muestra los elementos activados abajo." } },
+    { ELanguage::Italian,  { "Modalità overlay", "Semplice mostra solo titolo del gioco e FPS. Avanzata mostra anche gli elementi attivati qui sotto." } }
+};
+
+CONFIG_DEFINE_ENUM_LOCALE(EOverlayDisplayMode)
+{
+    {
+        ELanguage::English,
+        {
+            { EOverlayDisplayMode::Simple,   { "SIMPLE", "Game title and FPS only." } },
+            { EOverlayDisplayMode::Advanced, { "ADVANCED", "Shows enabled overlay items." } }
+        }
+    },
+    {
+        ELanguage::Japanese,
+        {
+            { EOverlayDisplayMode::Simple,   { "シンプル", "ゲーム[名:めい]とFPSのみを[表示:ひょうじ]します。" } },
+            { EOverlayDisplayMode::Advanced, { "アドバンス", "[有効:ゆうこう]なオーバーレイ[項目:こうもく]を[表示:ひょうじ]します。" } }
+        }
+    },
+    {
+        ELanguage::German,
+        {
+            { EOverlayDisplayMode::Simple,   { "EINFACH", "Nur Spieltitel und FPS." } },
+            { EOverlayDisplayMode::Advanced, { "ERWEITERT", "Zeigt aktivierte Overlay-Einträge." } }
+        }
+    },
+    {
+        ELanguage::French,
+        {
+            { EOverlayDisplayMode::Simple,   { "SIMPLE", "Titre du jeu et IPS uniquement." } },
+            { EOverlayDisplayMode::Advanced, { "AVANCÉ", "Affiche les éléments activés." } }
+        }
+    },
+    {
+        ELanguage::Spanish,
+        {
+            { EOverlayDisplayMode::Simple,   { "SIMPLE", "Solo título del juego y FPS." } },
+            { EOverlayDisplayMode::Advanced, { "AVANZADO", "Muestra los elementos activados." } }
+        }
+    },
+    {
+        ELanguage::Italian,
+        {
+            { EOverlayDisplayMode::Simple,   { "SEMPLICE", "Solo titolo del gioco e FPS." } },
+            { EOverlayDisplayMode::Advanced, { "AVANZATA", "Mostra gli elementi attivati." } }
+        }
+    }
+};
+
+// Japanese Notes: This localization should include furigana.
+CONFIG_DEFINE_LOCALE(OverlayShowCPUUpdateTime)
+{
+    { ELanguage::English,  { "CPU Update Time", "Show the game's CPU update time; this is not CPU utilization." } },
+    { ELanguage::Japanese, { "CPU[更新時間:こうしんじかん]", "ゲームのCPU[更新時間:こうしんじかん]を[表示:ひょうじ]します。CPU[使用率:しようりつ]ではありません。" } },
+    { ELanguage::German,   { "CPU-Aktualisierungszeit", "Zeigt die CPU-Aktualisierungszeit des Spiels, nicht die CPU-Auslastung." } },
+    { ELanguage::French,   { "Temps de mise à jour CPU", "Affiche le temps de mise à jour du CPU du jeu, pas son utilisation." } },
+    { ELanguage::Spanish,  { "Tiempo de actualización de CPU", "Muestra el tiempo de actualización de la CPU del juego, no su uso." } },
+    { ELanguage::Italian,  { "Tempo aggiornamento CPU", "Mostra il tempo di aggiornamento della CPU del gioco, non l'utilizzo." } }
+};
+
+CONFIG_DEFINE_LOCALE(OverlayShowGPUName)
+{
+    { ELanguage::English,  { "GPU Name", "Show the detected graphics processor name." } },
+    { ELanguage::Japanese, { "GPU[名:な]", "[検出:けんしゅつ]したGPUの[名前:なまえ]を[表示:ひょうじ]します。" } },
+    { ELanguage::German,   { "GPU-Name", "Zeigt den erkannten Namen des Grafikprozessors." } },
+    { ELanguage::French,   { "Nom du GPU", "Affiche le nom détecté du processeur graphique." } },
+    { ELanguage::Spanish,  { "Nombre de GPU", "Muestra el nombre detectado del procesador gráfico." } },
+    { ELanguage::Italian,  { "Nome GPU", "Mostra il nome rilevato del processore grafico." } }
+};
+
+CONFIG_DEFINE_LOCALE(OverlayShowGPUFrameTime)
+{
+    { ELanguage::English,  { "GPU Frame Time", "Show the time taken to render a GPU frame." } },
+    { ELanguage::Japanese, { "GPUフレーム[時間:じかん]", "GPUフレームの[描画時間:びょうがじかん]を[表示:ひょうじ]します。" } },
+    { ELanguage::German,   { "GPU-Framezeit", "Zeigt die Zeit zum Rendern eines GPU-Frames." } },
+    { ELanguage::French,   { "Temps d'image GPU", "Affiche le temps nécessaire au rendu d'une image GPU." } },
+    { ELanguage::Spanish,  { "Tiempo de fotograma GPU", "Muestra el tiempo necesario para renderizar un fotograma de GPU." } },
+    { ELanguage::Italian,  { "Tempo frame GPU", "Mostra il tempo necessario per renderizzare un frame GPU." } }
+};
+
+CONFIG_DEFINE_LOCALE(OverlayShowSoCSensors)
+{
+    { ELanguage::English,  { "Other SoC Sensors", "Show readings from supported SoC sensor IDs other than sensor 0." } },
+    { ELanguage::Japanese, { "[その他:そのた]のSoCセンサー", "センサー0[以外:いがい]の[対応:たいおう]SoCセンサー[値:ち]を[表示:ひょうじ]します。" } },
+    { ELanguage::German,   { "Weitere SoC-Sensoren", "Zeigt Werte unterstützter SoC-Sensoren außer Sensor 0." } },
+    { ELanguage::French,   { "Autres capteurs SoC", "Affiche les valeurs des capteurs SoC disponibles, sauf le capteur 0." } },
+    { ELanguage::Spanish,  { "Otros sensores SoC", "Muestra las lecturas de los sensores SoC compatibles, excepto el sensor 0." } },
+    { ELanguage::Italian,  { "Altri sensori SoC", "Mostra i valori dei sensori SoC supportati, escluso il sensore 0." } }
+};
+
+CONFIG_DEFINE_LOCALE(OverlayShowGameHeap)
+{
+    { ELanguage::English,  { "Game RAM Heap", "Show current, peak, and capacity values for the game allocator." } },
+    { ELanguage::Japanese, { "ゲームRAMヒープ", "ゲーム用アロケーターの[現在:げんざい]・ピーク・[容量:ようりょう]を[表示:ひょうじ]します。" } },
+    { ELanguage::German,   { "Spiel-RAM-Heap", "Zeigt aktuelle, Spitzen- und Kapazitätswerte des Spiel-Allokators." } },
+    { ELanguage::French,   { "Heap RAM du jeu", "Affiche les valeurs actuelle, maximale et la capacité de l'allocateur du jeu." } },
+    { ELanguage::Spanish,  { "Heap de RAM del juego", "Muestra los valores actual, máximo y la capacidad del asignador del juego." } },
+    { ELanguage::Italian,  { "Heap RAM di gioco", "Mostra i valori attuale, massimo e la capacità dell'allocatore del gioco." } }
+};
+
+CONFIG_DEFINE_LOCALE(OverlayShowPhysicalHeap)
+{
+    { ELanguage::English,  { "Physical RAM Heap", "Show current, peak, and capacity values for the physical-memory allocator." } },
+    { ELanguage::Japanese, { "[物理:ぶつり]RAMヒープ", "[物理:ぶつり]メモリアロケーターの[現在:げんざい]・ピーク・[容量:ようりょう]を[表示:ひょうじ]します。" } },
+    { ELanguage::German,   { "Physischer RAM-Heap", "Zeigt aktuelle, Spitzen- und Kapazitätswerte des physischen Speicher-Allokators." } },
+    { ELanguage::French,   { "Heap RAM physique", "Affiche les valeurs actuelle, maximale et la capacité de l'allocateur mémoire physique." } },
+    { ELanguage::Spanish,  { "Heap de RAM física", "Muestra los valores actual, máximo y la capacidad del asignador de memoria física." } },
+    { ELanguage::Italian,  { "Heap RAM fisica", "Mostra i valori attuale, massimo e la capacità dell'allocatore di memoria fisica." } }
+};
+
+CONFIG_DEFINE_LOCALE(OverlayShowRenderResolution)
+{
+    { ELanguage::English,  { "Render Resolution", "Show the current internal render resolution." } },
+    { ELanguage::Japanese, { "[描画:びょうが][解像度:かいぞうど]", "[現在:げんざい]の[内部:ないぶ]レンダリング[解像度:かいぞうど]を[表示:ひょうじ]します。" } },
+    { ELanguage::German,   { "Renderauflösung", "Zeigt die aktuelle interne Renderauflösung." } },
+    { ELanguage::French,   { "Résolution de rendu", "Affiche la résolution de rendu interne actuelle." } },
+    { ELanguage::Spanish,  { "Resolución de renderizado", "Muestra la resolución interna de renderizado actual." } },
+    { ELanguage::Italian,  { "Risoluzione rendering", "Mostra la risoluzione interna di rendering corrente." } }
+};
+
+CONFIG_DEFINE_LOCALE(OverlayShowUserDataPath)
+{
+    { ELanguage::English,  { "User Data Path", "Show the directory used for user data and settings." } },
+    { ELanguage::Japanese, { "ユーザーデータのパス", "ユーザーデータと[設定:せってい]に[使用:しよう]するフォルダーを[表示:ひょうじ]します。" } },
+    { ELanguage::German,   { "Benutzerdatenpfad", "Zeigt den Ordner für Benutzerdaten und Einstellungen." } },
+    { ELanguage::French,   { "Chemin des données utilisateur", "Affiche le dossier utilisé pour les données utilisateur et les paramètres." } },
+    { ELanguage::Spanish,  { "Ruta de datos de usuario", "Muestra la carpeta usada para los datos y la configuración del usuario." } },
+    { ELanguage::Italian,  { "Percorso dati utente", "Mostra la cartella usata per dati utente e impostazioni." } }
+};
+
+CONFIG_DEFINE_LOCALE(OverlayShowExecutablePath)
+{
+    { ELanguage::English,  { "Game Executable Path", "Show the path to the running game executable." } },
+    { ELanguage::Japanese, { "ゲーム[実行:じっこう]ファイルのパス", "[実行中:じっこうちゅう]のゲーム[実行:じっこう]ファイルのパスを[表示:ひょうじ]します。" } },
+    { ELanguage::German,   { "Pfad der Spieldatei", "Zeigt den Pfad zur laufenden Spieldatei." } },
+    { ELanguage::French,   { "Chemin de l'exécutable", "Affiche le chemin de l'exécutable du jeu en cours." } },
+    { ELanguage::Spanish,  { "Ruta del ejecutable del juego", "Muestra la ruta del ejecutable del juego en ejecución." } },
+    { ELanguage::Italian,  { "Percorso eseguibile del gioco", "Mostra il percorso dell'eseguibile del gioco in esecuzione." } }
+};
+
+CONFIG_DEFINE_LOCALE(OverlayShowGameMount)
+{
+    { ELanguage::English,  { "Game Mount Path", "Show the game installation root or mount path." } },
+    { ELanguage::Japanese, { "ゲームマウントのパス", "ゲームのインストール[先:さき]またはマウントのパスを[表示:ひょうじ]します。" } },
+    { ELanguage::German,   { "Spiel-Mount-Pfad", "Zeigt den Installations- oder Mount-Pfad des Spiels." } },
+    { ELanguage::French,   { "Chemin de montage du jeu", "Affiche le chemin d'installation ou de montage du jeu." } },
+    { ELanguage::Spanish,  { "Ruta de montaje del juego", "Muestra la ruta de instalación o montaje del juego." } },
+    { ELanguage::Italian,  { "Percorso mount del gioco", "Mostra il percorso di installazione o mount del gioco." } }
 };
 
 // Japanese Notes: This localization should include furigana.

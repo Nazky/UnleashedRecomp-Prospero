@@ -10,6 +10,7 @@
 #include <user/paths.h>
 #include <app.h>
 #include <exports.h>
+#include <hid/hid.h>
 
 static bool g_installMessageOpen = false;
 static bool g_installMessageFaderBegun = false;
@@ -62,6 +63,7 @@ PPC_FUNC(sub_825882B8)
     auto isAccepted = pPadState.IsTapped(SWA::eKeyState_A) || pPadState.IsTapped(SWA::eKeyState_Start);
 
     auto pContext = pTitleStateMenu->GetContextBase<SWA::CTitleStateMenu::CTitleStateMenuContext>();
+    const auto cursorIndexBeforeUpdate = pContext->m_pTitleMenu->m_CursorIndex;
     if (pContext && !OptionsMenu::s_isVisible && !OptionsMenu::s_isRestartRequired && !g_restartFaderBegun)
     {
         auto* pCtxBytes = reinterpret_cast<uint8_t*>(pContext);
@@ -148,6 +150,9 @@ PPC_FUNC(sub_825882B8)
 
     if (!OptionsMenu::s_isVisible && !OptionsMenu::s_isRestartRequired && !g_restartFaderBegun && !ProcessInstallMessage())
         __imp__sub_825882B8(ctx, base);
+
+    if (pContext->m_pTitleMenu->m_CursorIndex != cursorIndexBeforeUpdate)
+        hid::PulseMenuVibration();
 
     if (isOptionsIndex)
     {

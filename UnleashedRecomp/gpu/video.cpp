@@ -26,15 +26,30 @@
 #include <ui/message_window.h>
 #include <ui/options_menu.h>
 #include <ui/game_window.h>
+#include <ui/system_info_palette.h>
 #include <ui/black_bar.h>
 #include <patches/aspect_ratio_patches.h>
 #include <user/config.h>
 #include <sdl_listener.h>
 #include <xxHashMap.h>
 #include <os/process.h>
+#include <os/logger.h>
+#include <user/paths.h>
+#include <system_info_overlay.h>
+
+#include <algorithm>
+#include <fstream>
+#include <limits>
+#include <optional>
+
+#include <nlohmann/json.hpp>
 
 #if defined(ASYNC_PSO_DEBUG) || defined(PSO_CACHING)
 #include <magic_enum/magic_enum.hpp>
+#endif
+
+#if defined(__PROSPERO__)
+extern "C" int sceKernelGetSocSensorTemperature(int sensor, int* celsius);
 #endif
 
 #define UNLEASHED_RECOMP
@@ -186,6 +201,14 @@ static uint32_t g_pixelShaderConstants[0x380];
 static SharedConstants g_sharedConstants;
 static GuestTexture* g_textures[16];
 static RenderSamplerDesc g_samplerDescs[16];
+struct CachedGuestSamplerState
+{
+    uint32_t data0{};
+    uint32_t data3{};
+    uint32_t data5{};
+    bool valid{};
+};
+static CachedGuestSamplerState g_guestSamplerStates[16];
 static bool g_scissorTestEnable = false;
 static RenderRect g_scissorRect;
 static RenderVertexBufferView g_vertexBufferViews[16];
@@ -275,6 +298,7 @@ static double g_applicationValues[PROFILER_VALUE_COUNT];
 static Profiler g_gpuFrameProfiler;
 static Profiler g_presentProfiler;
 static Profiler g_updateDirectorProfiler;
+static double g_currentFps = 0.0;
 static Profiler g_renderDirectorProfiler;
 static Profiler g_frameFenceProfiler;
 static Profiler g_presentWaitProfiler;
@@ -827,6 +851,7 @@ enum class RenderCommandType
     SetTexture,
     SetScissorRect,
     SetSamplerState,
+    SetAnisotropicFiltering,
     SetBooleans,
     SetVertexShaderConstants,
     SetPixelShaderConstants,
@@ -922,6 +947,11 @@ struct RenderCommand
             uint32_t data3;
             uint32_t data5;
         } setSamplerState;
+
+        struct
+        {
+            uint32_t value;
+        } setAnisotropicFiltering;
 
         struct
         {
@@ -2501,14 +2531,259 @@ static void DrawProfiler()
     font->Scale = defaultScale;
 }
 
-static void DrawFPS()
+static std::optional<std::string> ReadParamTitleName(const nlohmann::json& value)
 {
-    if (!Config::ShowFPS)
+    if (!value.is_object())
+        return std::nullopt;
+
+    const auto titleName = value.find("titleName");
+    if (titleName == value.end() || !titleName->is_string())
+        return std::nullopt;
+
+    std::string title = titleName->get<std::string>();
+    if (title.empty())
+        return std::nullopt;
+
+    return title;
+}
+
+static std::string GetOverlayGameTitle()
+{
+    static const std::string title = []
+    {
+        const auto paramPath = os::process::GetExecutableRoot() / "sce_sys" / "param.json";
+        std::ifstream paramFile(paramPath, std::ios::binary);
+        if (paramFile)
+        {
+            const nlohmann::json param = nlohmann::json::parse(paramFile, nullptr, false);
+            if (!param.is_discarded())
+            {
+                const auto localizedParameters = param.find("localizedParameters");
+                if (localizedParameters != param.end() && localizedParameters->is_object())
+                {
+                    const auto defaultLanguage = localizedParameters->find("defaultLanguage");
+                    if (defaultLanguage != localizedParameters->end() && defaultLanguage->is_string())
+                    {
+                        const auto languageEntry = localizedParameters->find(defaultLanguage->get<std::string>());
+                        if (languageEntry != localizedParameters->end())
+                        {
+                            if (const auto titleName = ReadParamTitleName(*languageEntry))
+                                return *titleName;
+                        }
+                    }
+
+                    for (auto languageEntry = localizedParameters->begin(); languageEntry != localizedParameters->end(); ++languageEntry)
+                    {
+                        if (const auto titleName = ReadParamTitleName(*languageEntry))
+                            return *titleName;
+                    }
+                }
+
+                if (const auto titleName = ReadParamTitleName(param))
+                    return *titleName;
+
+                const auto titleId = param.find("titleId");
+                if (titleId != param.end() && titleId->is_string() && !titleId->get<std::string>().empty())
+                    return titleId->get<std::string>();
+            }
+        }
+
+        return std::string("GAME");
+    }();
+
+    return title;
+}
+
+static void DrawSystemInfo()
+{
+    if (!Config::ShowSystemInfo || !g_device || !g_swapChain)
         return;
 
+    ImFont* font = ImFontAtlasSnapshot::GetFont("FOT-SeuratPro-M.otf");
+    if (font == nullptr)
+        return;
+
+    system_info_overlay::Style style;
+    style.position = { Scale(14), Scale(14) };
+    style.fontSize = Scale(10);
+    style.padding = Scale(8);
+    style.lineHeight = Scale(14);
+    style.sectionFontSize = Scale(8);
+    style.sectionLineHeight = Scale(11);
+    style.sectionHeaderGap = Scale(2);
+    style.sectionGap = Scale(6);
+    style.rowGap = Scale(1);
+    style.accentWidth = Scale(3);
+    style.sectionAccentWidth = Scale(2);
+    style.borderThickness = Scale(1);
+    style.shadowOffset = Scale(2);
+    style.cornerRadius = Scale(7);
+    style.title = GetOverlayGameTitle();
+    style.titleFontSize = Scale(13);
+    style.titleLineHeight = Scale(17);
+    style.titleGap = Scale(5);
+    const auto& accent = system_info_palette::kColors[
+        static_cast<std::size_t>(system_info_palette::ClampIndex(Config::SystemInfoAccentPreset.Value))];
+    style.accentColor = IM_COL32(accent.r, accent.g, accent.b, 235);
+    style.accentTextColor = IM_COL32(accent.r, accent.g, accent.b, 255);
+    style.sectionTitleColor = IM_COL32(accent.r, accent.g, accent.b, 255);
+    style.separatorColor = IM_COL32(accent.r, accent.g, accent.b, 70);
+    style.titleColor = style.accentTextColor;
+    style.backgroundColor = IM_COL32(9, 13, 20, 226);
+    style.borderColor = IM_COL32(255, 255, 255, 35);
+    style.shadowColor = IM_COL32(0, 0, 0, 90);
+    style.accentFirstLine = true;
+
+    std::vector<system_info_overlay::Section> sections;
+    sections.reserve(5);
+
+    const bool advancedOverlay = Config::OverlayMode == EOverlayDisplayMode::Advanced;
+    const double fps = std::isfinite(g_currentFps) ? g_currentFps : 0.0;
+    const std::string fpsRow = fmt::format("{}: {:.1f}", Localise("SystemInfo_FPS"), fps);
+
+    if (!advancedOverlay)
+    {
+        // Keep Simple mode strictly to the game title and FPS; no section label.
+        sections.push_back({ {}, { fpsRow } });
+    }
+    else
+    {
+        system_info_overlay::Section performance{ Localise("SystemInfo_SectionPerformance"), {} };
+        performance.rows.push_back(fpsRow);
+
+        const double cpuUpdateMs = g_updateDirectorProfiler.value.load();
+        if (Config::OverlayShowCPUUpdateTime && std::isfinite(cpuUpdateMs) && cpuUpdateMs > 0.0)
+            performance.rows.push_back(fmt::format("{}: {:.2f} ms", Localise("SystemInfo_CPU"), cpuUpdateMs));
+
+        if (Config::OverlayShowGPUName && !g_device->getDescription().name.empty())
+            performance.rows.push_back(fmt::format("{}: {}", Localise("SystemInfo_GPU"), g_device->getDescription().name));
+
+        const double gpuFrameMs = g_gpuFrameProfiler.value.load();
+        if (Config::OverlayShowGPUFrameTime && std::isfinite(gpuFrameMs) && gpuFrameMs > 0.0)
+            performance.rows.push_back(fmt::format("{}: {:.2f} ms", Localise("SystemInfo_GPUFrame"), gpuFrameMs));
+
+        sections.emplace_back(std::move(performance));
+
+#if defined(__PROSPERO__)
+        if (Config::OverlayShowSoCSensors)
+        {
+            static constexpr uint32_t kSceKernelErrorEinval = 0x80020016u;
+            static double nextSensorUpdate = 0.0;
+            static std::vector<int> supportedSocSensorIds;
+            static std::vector<std::pair<int, int>> socTemperatures;
+            static bool socSensorsDiscovered;
+            static bool socSensorDiagnosticLogged;
+            const double currentTime = ImGui::GetTime();
+
+            // Sensor 0 is the GPU-temperature reading and is never queried or displayed.
+            // Enumerate only the other supported IDs, stopping at EINVAL.
+            if (!socSensorsDiscovered)
+            {
+                for (int sensorIndex = 1; sensorIndex < 16; ++sensorIndex)
+                {
+                    int probeTemperature = 0;
+                    const int sensorResult = sceKernelGetSocSensorTemperature(sensorIndex, &probeTemperature);
+                    if (static_cast<uint32_t>(sensorResult) == kSceKernelErrorEinval)
+                        break;
+
+                    if (sensorResult == 0)
+                        supportedSocSensorIds.push_back(sensorIndex);
+                    else if (sensorResult != 0 && !socSensorDiagnosticLogged)
+                    {
+                        LOGFN("SoC sensor {} discovery failed (result={}, raw value={})",
+                            sensorIndex, sensorResult, probeTemperature);
+                        socSensorDiagnosticLogged = true;
+                    }
+                }
+                socSensorsDiscovered = true;
+            }
+
+            if (currentTime >= nextSensorUpdate)
+            {
+                nextSensorUpdate = currentTime + 1.0;
+                socTemperatures.clear();
+                for (int sensorIndex : supportedSocSensorIds)
+                {
+                    int temperature = 0;
+                    const int sensorResult = sceKernelGetSocSensorTemperature(sensorIndex, &temperature);
+                    if (sensorResult == 0)
+                        socTemperatures.emplace_back(sensorIndex, temperature);
+                    else if (!socSensorDiagnosticLogged)
+                    {
+                        LOGFN("SoC sensor {} query failed (result={}, raw value={})",
+                            sensorIndex, sensorResult, temperature);
+                        socSensorDiagnosticLogged = true;
+                    }
+                }
+            }
+
+            system_info_overlay::Section socSensors{ Localise("SystemInfo_SectionSoCSensors"), {} };
+            for (const auto& [sensorIndex, temperature] : socTemperatures)
+                socSensors.rows.push_back(fmt::format("{} {}: {} °C",
+                    Localise("SystemInfo_SoCSensor"), sensorIndex, temperature));
+            if (!socSensors.rows.empty())
+                sections.emplace_back(std::move(socSensors));
+        }
+#endif
+
+        auto appendHeapStats = [&](system_info_overlay::Section& section,
+                                   const char* label,
+                                   O1HeapInstance* heap,
+                                   Mutex& mutex)
+        {
+            if (heap == nullptr)
+                return;
+
+            O1HeapDiagnostics diagnostics{};
+            {
+                std::lock_guard lock(mutex);
+                diagnostics = o1heapGetDiagnostics(heap);
+            }
+
+            constexpr double BYTES_PER_MEBIBYTE = 1024.0 * 1024.0;
+            section.rows.push_back(fmt::format("{}: {:.1f}/{:.1f} MiB (peak {:.1f})",
+                Localise(label),
+                double(diagnostics.allocated) / BYTES_PER_MEBIBYTE,
+                double(diagnostics.capacity) / BYTES_PER_MEBIBYTE,
+                double(diagnostics.peak_allocated) / BYTES_PER_MEBIBYTE));
+        };
+
+        system_info_overlay::Section memory{ Localise("SystemInfo_SectionMemory"), {} };
+        if (Config::OverlayShowGameHeap)
+            appendHeapStats(memory, "SystemInfo_GameHeap", g_userHeap.heap, g_userHeap.mutex);
+        if (Config::OverlayShowPhysicalHeap)
+            appendHeapStats(memory, "SystemInfo_PhysicalHeap", g_userHeap.physicalHeap, g_userHeap.physicalMutex);
+        if (!memory.rows.empty())
+            sections.emplace_back(std::move(memory));
+
+        system_info_overlay::Section display{ Localise("SystemInfo_SectionDisplay"), {} };
+        if (Config::OverlayShowRenderResolution)
+        {
+            const uint32_t renderWidth = uint32_t(std::round(Video::s_viewportWidth * Config::ResolutionScale.Value));
+            const uint32_t renderHeight = uint32_t(std::round(Video::s_viewportHeight * Config::ResolutionScale.Value));
+            display.rows.push_back(fmt::format("{}: {}x{}", Localise("SystemInfo_Resolution"), renderWidth, renderHeight));
+        }
+        if (!display.rows.empty())
+            sections.emplace_back(std::move(display));
+
+        system_info_overlay::Section paths{ Localise("SystemInfo_SectionPaths"), {} };
+        if (Config::OverlayShowUserDataPath)
+            paths.rows.push_back(fmt::format("{}: {}", Localise("SystemInfo_UserDataPath"), GetUserPath().string()));
+        if (Config::OverlayShowExecutablePath)
+            paths.rows.push_back(fmt::format("{}: {}", Localise("SystemInfo_ExecutablePath"), os::process::GetExecutablePath().string()));
+        if (Config::OverlayShowGameMount)
+            paths.rows.push_back(fmt::format("{}: {}", Localise("SystemInfo_GameMount"), os::process::GetExecutableRoot().string()));
+        if (!paths.rows.empty())
+            sections.emplace_back(std::move(paths));
+    }
+
+    system_info_overlay::Draw(sections, font, style);
+}
+
+static void DrawFPS()
+{
     double time = ImGui::GetTime();
     static double updateTime = time;
-    static double fps = 0;
     static double totalDeltaTime = 0.0;
     static uint32_t totalDeltaCount = 0;
 
@@ -2517,25 +2792,28 @@ static void DrawFPS()
 
     if (time - updateTime >= 1.0f)
     {
-        fps = 1000.0 / std::max(totalDeltaTime / double(totalDeltaCount), 1.0);
+        g_currentFps = 1000.0 / std::max(totalDeltaTime / double(totalDeltaCount), 1.0);
         updateTime = time;
         totalDeltaTime = 0.0;
         totalDeltaCount = 0;
     }
 
+    if (!Config::ShowFPS || Config::ShowSystemInfo)
+        return;
+
     auto drawList = ImGui::GetBackgroundDrawList();
 
-    auto fmt = fmt::format("FPS: {:.2f}", fps);
+    auto fpsText = fmt::format("FPS: {:.2f}", g_currentFps);
     auto font = ImFontAtlasSnapshot::GetFont("FOT-SeuratPro-M.otf");
     auto fontSize = Scale(10);
-    auto textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0, fmt.c_str());
+    auto textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0, fpsText.c_str());
 
     ImVec2 min = { Scale(40), Scale(30) };
     ImVec2 max = { min.x + std::max(Scale(75), textSize.x + Scale(10)), min.y + Scale(15) };
     ImVec2 textPos = { min.x + Scale(2), CENTRE_TEXT_VERT(min, max, textSize) + Scale(0.2f) };
 
     drawList->AddRectFilled(min, max, IM_COL32(0, 0, 0, 200));
-    drawList->AddText(font, fontSize, textPos, IM_COL32_WHITE, fmt.c_str());
+    drawList->AddText(font, fontSize, textPos, IM_COL32_WHITE, fpsText.c_str());
 }
 
 static void DrawImGui()
@@ -2608,6 +2886,7 @@ static void DrawImGui()
 
     assert(ImGui::GetBackgroundDrawList()->_ClipRectStack.Size == 1 && "Some clip rects were not removed from the stack!");
 
+    DrawSystemInfo();
     DrawFPS();
     DrawProfiler();
     ImGui::Render();
@@ -4370,9 +4649,11 @@ static void ProcSetBooleans(const RenderCommand& cmd)
     SetDirtyValue(g_dirtyStates.sharedConstants, g_sharedConstants.booleans, cmd.setBooleans.booleans);
 }
 
-static void ProcSetSamplerState(const RenderCommand& cmd)
+static void UpdateSamplerState(uint32_t index, uint32_t anisotropyValue)
 {
-    const auto& args = cmd.setSamplerState;
+    const auto& args = g_guestSamplerStates[index];
+    if (!args.valid)
+        return;
 
     const auto addressU = ConvertTextureAddressMode((args.data0 >> 10) & 0x7);
     const auto addressV = ConvertTextureAddressMode((args.data0 >> 13) & 0x7);
@@ -4382,15 +4663,14 @@ static void ProcSetSamplerState(const RenderCommand& cmd)
     auto mipFilter = ConvertTextureFilter((args.data3 >> 23) & 0x3);
     const auto borderColor = ConvertBorderColor(args.data5 & 0x3);
 
-    bool anisotropyEnabled = Config::AnisotropicFiltering > 0 && mipFilter == RenderFilter::LINEAR;
+    const bool anisotropyEnabled = anisotropyValue > 0 && mipFilter == RenderFilter::LINEAR;
     if (anisotropyEnabled)
     {
         magFilter = RenderFilter::LINEAR;
         minFilter = RenderFilter::LINEAR;
     }
 
-    auto& samplerDesc = g_samplerDescs[args.index];
-
+    auto& samplerDesc = g_samplerDescs[index];
     bool dirty = false;
 
     SetDirtyValue(dirty, samplerDesc.addressU, addressU);
@@ -4399,7 +4679,7 @@ static void ProcSetSamplerState(const RenderCommand& cmd)
     SetDirtyValue(dirty, samplerDesc.minFilter, minFilter);
     SetDirtyValue(dirty, samplerDesc.magFilter, magFilter);
     SetDirtyValue(dirty, samplerDesc.mipmapMode, RenderMipmapMode(mipFilter));
-    SetDirtyValue(dirty, samplerDesc.maxAnisotropy, anisotropyEnabled ? Config::AnisotropicFiltering : 16u);
+    SetDirtyValue(dirty, samplerDesc.maxAnisotropy, anisotropyEnabled ? anisotropyValue : 16u);
     SetDirtyValue(dirty, samplerDesc.anisotropyEnabled, anisotropyEnabled);
     SetDirtyValue(dirty, samplerDesc.borderColor, borderColor);
 
@@ -4410,12 +4690,24 @@ static void ProcSetSamplerState(const RenderCommand& cmd)
         {
             descriptorIndex = g_samplerStates.size();
             sampler = g_device->createSampler(samplerDesc);
-
             g_samplerDescriptorSet->setSampler(descriptorIndex - 1, sampler.get());
         }
 
-        SetDirtyValue(g_dirtyStates.sharedConstants, g_sharedConstants.samplerIndices[args.index], descriptorIndex - 1);
+        SetDirtyValue(g_dirtyStates.sharedConstants, g_sharedConstants.samplerIndices[index], descriptorIndex - 1);
     }
+}
+
+static void ProcSetSamplerState(const RenderCommand& cmd)
+{
+    const auto& args = cmd.setSamplerState;
+    g_guestSamplerStates[args.index] = { args.data0, args.data3, args.data5, true };
+    UpdateSamplerState(args.index, Config::AnisotropicFiltering.Value);
+}
+
+static void ProcSetAnisotropicFiltering(const RenderCommand& cmd)
+{
+    for (uint32_t index = 0; index < 16; ++index)
+        UpdateSamplerState(index, cmd.setAnisotropicFiltering.value);
 }
 
 static void ProcSetVertexShaderConstants(const RenderCommand& cmd)
@@ -5287,6 +5579,7 @@ static std::thread g_renderThread([]
                 case RenderCommandType::SetTexture:                        ProcSetTexture(cmd); break;
                 case RenderCommandType::SetScissorRect:                    ProcSetScissorRect(cmd); break;
                 case RenderCommandType::SetSamplerState:                   ProcSetSamplerState(cmd); break;
+                case RenderCommandType::SetAnisotropicFiltering:           ProcSetAnisotropicFiltering(cmd); break;
                 case RenderCommandType::SetBooleans:                       ProcSetBooleans(cmd); break;
                 case RenderCommandType::SetVertexShaderConstants:          ProcSetVertexShaderConstants(cmd); break;
                 case RenderCommandType::SetPixelShaderConstants:           ProcSetPixelShaderConstants(cmd); break;
@@ -7546,7 +7839,15 @@ void VideoConfigValueChangedCallback(IConfigDef* config)
 
     if (g_needsResize)
         Video::ComputeViewportDimensions();
-        
+
+    if (config == &Config::AnisotropicFiltering && g_device)
+    {
+        RenderCommand cmd{};
+        cmd.type = RenderCommandType::SetAnisotropicFiltering;
+        cmd.setAnisotropicFiltering.value = Config::AnisotropicFiltering.Value;
+        g_renderQueue.enqueue(cmd);
+    }
+
     // Config options that require pipeline recompilation
     bool shouldRecompile =
         config == &Config::AntiAliasing ||

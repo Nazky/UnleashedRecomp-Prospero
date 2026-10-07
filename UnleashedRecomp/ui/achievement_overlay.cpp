@@ -12,6 +12,12 @@
 #include <decompressor.h>
 #include <patches/inspire_patches.h>
 
+#include <algorithm>
+#include <cfloat>
+#include <cstdint>
+#include <mutex>
+#include <thread>
+
 constexpr double OVERLAY_CONTAINER_COMMON_MOTION_START = 0;
 constexpr double OVERLAY_CONTAINER_COMMON_MOTION_END = 11;
 constexpr double OVERLAY_CONTAINER_INTRO_FADE_START = 5;
@@ -20,6 +26,27 @@ constexpr double OVERLAY_CONTAINER_OUTRO_FADE_START = 0;
 constexpr double OVERLAY_CONTAINER_OUTRO_FADE_END = 4;
 
 constexpr double OVERLAY_DURATION = 3;
+
+// Unlocks may be queued from a game thread while the overlay consumes them on
+// the render thread. Keep every queue read/write under this mutex.
+static std::mutex g_achievementQueueMutex;
+
+static bool HasQueuedAchievement()
+{
+    std::lock_guard<std::mutex> lock(g_achievementQueueMutex);
+    return !AchievementOverlay::s_queue.empty();
+}
+
+static bool TryDequeueAchievement(uint16_t& id)
+{
+    std::lock_guard<std::mutex> lock(g_achievementQueueMutex);
+    if (AchievementOverlay::s_queue.empty())
+        return false;
+
+    id = AchievementOverlay::s_queue.front();
+    AchievementOverlay::s_queue.pop();
+    return true;
+}
 
 static bool g_isClosing = false;
 
@@ -76,8 +103,6 @@ static bool DrawContainer(ImVec2 min, ImVec2 max, float cornerRadius = 25)
 
 void AchievementOverlay::Init()
 {
-    auto& io = ImGui::GetIO();
-
     g_fntSeurat = ImFontAtlasSnapshot::GetFont("FOT-SeuratPro-M.otf");
 }
 
@@ -92,12 +117,22 @@ PPC_FUNC(sub_82B43480)
     __imp__sub_82B43480(ctx, base);
 }
 
-// Dequeue achievements only in the main thread. This is also extra thread safety.
+// The upstream desktop path draws from the process main thread. On PS5 the
+// ImGui draw call is reached from the guest game thread, so retain upstream's
+// audio-ready checks but bypass only the native process-thread identity test.
+#if !defined(__PROSPERO__)
 static std::thread::id g_mainThreadId = std::this_thread::get_id();
+#endif
 
 static bool CanDequeueAchievement()
 {
-    if (g_soundAdministratorUpdated && std::this_thread::get_id() == g_mainThreadId && !AchievementOverlay::s_queue.empty())
+#if defined(__PROSPERO__)
+    const bool isExpectedThread = true;
+#else
+    const bool isExpectedThread = std::this_thread::get_id() == g_mainThreadId;
+#endif
+
+    if (g_soundAdministratorUpdated && isExpectedThread && HasQueuedAchievement())
     {
         // Check if we can actually play any audio right now. If not, we'll wait until we can.
         uint32_t audioCenter = *reinterpret_cast<be<uint32_t>*>(g_memory.Translate(0x83362FFC));
@@ -116,13 +151,13 @@ static bool CanDequeueAchievement()
 
 void AchievementOverlay::Draw()
 {
-    if (!AchievementOverlay::s_isVisible && CanDequeueAchievement())
+    uint16_t queuedAchievement = 0;
+    if (!AchievementOverlay::s_isVisible && CanDequeueAchievement() && TryDequeueAchievement(queuedAchievement))
     {
         s_isVisible = true;
         g_isClosing = false;
         g_appearTime = ImGui::GetTime();
-        g_achievement = g_xdbfWrapper.GetAchievement((EXDBFLanguage)Config::Language.Value, s_queue.front());
-        s_queue.pop();
+        g_achievement = g_xdbfWrapper.GetAchievement((EXDBFLanguage)Config::Language.Value, queuedAchievement);
         
         if (Config::Language == ELanguage::English)
             g_achievement.Name = xdbf::FixInvalidSequences(g_achievement.Name);
@@ -145,13 +180,16 @@ void AchievementOverlay::Draw()
     auto drawList = ImGui::GetBackgroundDrawList();
     auto& res = ImGui::GetIO().DisplaySize;
 
-    auto strAchievementUnlocked = Localise("Achievements_Unlock").c_str();
-    auto strAchievementName = g_achievement.Name.c_str();
+    const auto strAchievementUnlocked = Localise("Achievements_Unlock");
+    const auto strAchievementName = g_achievement.Name;
+    const auto* headerText = strAchievementUnlocked.c_str();
+    const auto* bodyText = strAchievementName.c_str();
+    auto* font = g_fntSeurat ? g_fntSeurat : ImGui::GetFont();
 
     // Calculate text sizes.
     auto fontSize = Scale(24);
-    auto headerSize = g_fntSeurat->CalcTextSizeA(fontSize, FLT_MAX, 0, strAchievementUnlocked);
-    auto bodySize = g_fntSeurat->CalcTextSizeA(fontSize, FLT_MAX, 0, strAchievementName);
+    auto headerSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0, headerText);
+    auto bodySize = font->CalcTextSizeA(fontSize, FLT_MAX, 0, bodyText);
     auto maxSize = std::max(headerSize.x, bodySize.x) + Scale(5);
 
     // Calculate image margins.
@@ -189,11 +227,11 @@ void AchievementOverlay::Draw()
             // Draw header text.
             DrawTextWithShadow
             (
-                g_fntSeurat,                                                                                 // font
+                font,                                                                                       // font
                 fontSize,                                                                                    // fontSize
                 { /* X */ min.x + textMarginX + (maxSize - headerSize.x) / 2, /* Y */ min.y + textMarginY }, // pos
                 IM_COL32(252, 243, 5, 255),                                                                  // colour
-                strAchievementUnlocked,                                                                      // text
+                headerText,                                                                                   // text
                 2,                                                                                           // offset
                 1.0f,                                                                                        // radius
                 IM_COL32(0, 0, 0, 255)                                                                       // shadowColour
@@ -202,11 +240,11 @@ void AchievementOverlay::Draw()
             // Draw achievement name.
             DrawTextWithShadow
             (
-                g_fntSeurat,                                                                                                       // font
+                font,                                                                                                             // font
                 fontSize,                                                                                                          // fontSize
                 { /* X */ min.x + textMarginX + (maxSize - bodySize.x) / 2, /* Y */ min.y + textMarginY + bodySize.y + Scale(6) }, // pos
                 IM_COL32(255, 255, 255, 255),                                                                                      // colour
-                strAchievementName,                                                                                                // text
+                bodyText,                                                                                                            // text
                 2,                                                                                                                 // offset
                 1.0f,                                                                                                              // radius
                 IM_COL32(0, 0, 0, 255)                                                                                             // shadowColour
@@ -227,7 +265,8 @@ void AchievementOverlay::Draw()
 
 void AchievementOverlay::Open(int id)
 {
-    s_queue.push(id);
+    std::lock_guard<std::mutex> lock(g_achievementQueueMutex);
+    s_queue.push(static_cast<uint16_t>(id));
 }
 
 void AchievementOverlay::Close()

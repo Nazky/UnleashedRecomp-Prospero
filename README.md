@@ -29,7 +29,7 @@
 > [!WARNING]
 > **Unofficial PlayStation 5 Fork — Not Intended for Upstream Merge**
 >
-> **UnleashedRecomp-Prospero** ([`Nazky/UnleashedRecomp-Prospero`](https://github.com/Nazky/UnleashedRecomp-Prospero), branch `prospero`) is an independent, community-maintained fork created specifically to port *Unleashed Recompiled* to the **PlayStation 5 (`__PROSPERO__`)**.
+> **UnleashedRecomp-Prospero** ([`Nazky/UnleashedRecomp-Prospero`](https://github.com/Nazky/UnleashedRecomp-Prospero), branch `prospero`) is an independent, community-maintained fork created specifically to port *Unleashed Recompiled* to the **PlayStation 5.
 >
 > - **This repository is NOT meant to be merged into the official [hedge-dev/UnleashedRecomp](https://github.com/hedge-dev/UnleashedRecomp) project.**
 > - **Do NOT report issues, crashes, or support requests from this PlayStation 5 fork to the official `hedge-dev/UnleashedRecomp` repository.**
@@ -41,7 +41,7 @@
 
 **UnleashedRecomp-Prospero** brings the static Xbox 360 recompilation of *Sonic Unleashed* natively to the **PlayStation 5 (`x86_64-sie-ps5` / `__PROSPERO__`)** as a self-contained homebrew BigApp title (`PPSA99902`).
 
-By combining [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) (PowerPC-to-C++ static recompilation) and [XenosRecomp](https://github.com/hedge-dev/XenosRecomp) (Xbox 360 Xenos shader-to-SPIR-V transpilation) with **[plume-ps5](https://github.com/Nazky/plume-ps5)** (`prospero` branch), **[PS5_Mesa](https://github.com/mihawk-99/PS5_Mesa)** (`libvulkan_radeon.ps5.a`), and **[PS5_PayloadSDK](https://github.com/ps5-payload-dev/sdk)**, the entire game engine runs natively on the PS5's AMD Zen 2 CPU and Oberon RDNA 2 GPU at up to **4K (`3840x2160`)** and high frame rates.
+By combining [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) (PowerPC-to-C++ static recompilation) and [XenosRecomp](https://github.com/hedge-dev/XenosRecomp) (Xbox 360 Xenos shader-to-SPIR-V transpilation) with **[plume-ps5](https://github.com/Nazky/plume-ps5)** (`prospero` branch), **[PS5_Mesa](https://github.com/mihawk-99/PS5_Mesa)** (`libvulkan_radeon.ps5.a`), and **[PS5_PayloadSDK](https://github.com/ps5-payload-dev/sdk)**, the entire game engine runs natively on the PS5's AMD Zen 2 CPU and Oberon RDNA 2 GPU with **4K (`3840x2160`) output** and selectable **30, 60, 90, or 120 FPS targets** (60 FPS remains the default).
 
 ---
 
@@ -53,17 +53,22 @@ By combining [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) (PowerPC-to
 | **Zero-Wizard `ressources/` Auto-Detection** | Place your extracted Xbox 360 `game`, `update`, and optional `dlc` folders inside `ressources/` — `make` automatically recompiles the XEX & shaders, and the PS5 runtime bypasses the desktop Install Wizard on boot. |
 | **Auto-Detected PS5 System Language** | Queries `sceSystemServiceParamGetInt(SCE_SYSTEM_SERVICE_PARAM_ID_LANG)` on first boot to automatically configure the game in English, Japanese, German, French, Spanish, or Italian. |
 | **In-Process Soft Reboot & Language Prompt** | Changing a restart-requiring setting (`Language`, `Voice Language`, or `Channel Configuration`) in the Options menu displays a confirmation popup in the newly selected language on exit: confirming performs an instant **in-process soft reboot** without closing the PS5 app, while cancelling reverts the setting and returns to the menu. |
-| **Console-Tailored Options & UI** | Hides desktop-only settings (`Window Size`, `Monitor`, `Music Attenuation`, `Allow Background Input`, and the Title Menu `Install` entry), sets PS5-optimized defaults (`Fullscreen = true`, `ControllerIcons = PlayStation`, `AchievementNotifications = true`), and saves user data to `/app0/user`. |
-| **Native DualSense (`scePad`) + Touchpad** | Polls the DualSense controller directly via `scePadReadState` (with automatic `scePadGetHandle` fallback) and supports navigating the World Map globe using the DualSense touchpad. |
+| **Console-Tailored Options & UI** | Hides desktop-only settings, keeps PS5 output at 4K with internal resolution scaling, and stores user data in `/data/UnleashedRecomp` by default (falling back to the executable root if `/data` cannot be written). |
+| **Native DualSense (`scePad`), Touchpad & Haptics** | Polls the DualSense directly and supports touchpad navigation. On PS5 it tries the type-10 `sceAudioOut` vibration port and streams synthesized PCM in advanced mode; if that path is unavailable or fails, it attempts the compatible-mode `scePadSetVibration` fallback. In-game rumble receives a 5% gain boost, and the existing short menu pulses remain. Conventional mode-2 rumble is reported working; the new audio-haptics route still needs hardware validation. Adaptive triggers remain out of scope. |
+| **Optional System-Information Panel** | A top-left Sonic Unleashed overlay shows FPS, CPU/GPU frame metrics, heap use, render resolution, and game paths. CPU/GPU temperature readings remain disabled; the accent uses a paginated palette of 256 colors. Heap readings are allocator metrics, not total-system RAM. |
+| **PS5 Graphics & Frame-Rate Controls** | Offers 30, 60, 90, and 120 FPS target choices (60 default), retains 4K output, and exposes anisotropic filtering, depth-of-field quality, and the existing internal-resolution scale. The FPS choice changes the software pacing cap, not the output mode or title metadata; the presentation-buffer policy remains unchanged. |
+| **Optional `/data` Elevation** | Cooperates with an already-running Lapy service; the exact-title one-shot helper is opt-in and firmware-sensitive. If `/data` still cannot be written, the app uses its executable-root fallback. |
 | **Zero-Latency 48 kHz `sceAudioOut`** | Streams 256-sample stereo audio frames directly to Sony's `sceAudioOut` hardware API at `48000 Hz`, matching Xbox 360 XAudio's native 256-sample grain without resampling latency. |
 | **Built-In Linux PS5 Asset Pipeline** | Includes native Linux converters for **4K `BC7_UNORM` DX10 DDS** backgrounds (`tools/png_to_bc7_dds`) and **looped 48 kHz ATRAC9** audio (`tools/wav_to_at9`) — no Windows tools required. |
+
+Storage migration, the experimental elevation build gate, DualSense motor mapping and haptic-audio fallback, and Vulkan/Mesa compatibility notes are documented in [`docs/PS5-STORAGE-INPUT-GRAPHICS.md`](docs/PS5-STORAGE-INPUT-GRAPHICS.md).
 
 ---
 
 ## ⚠️ Known Issues
 
-- **Game Crash / Freeze During Reboot (Language Change)**: Changing the game language triggers a game reboot; because a PS5 homebrew BigApp cannot self-respawn its process like on desktop, attempting to change the language and reboot in-game can cause the game to crash or freeze, requiring you to close and relaunch the application manually (the new language setting is still saved for the next launch).
-- **Temporary FPS Drops in Heavy Scenes**: The game runs at **4K 60 FPS** in most areas, but scenes with heavy particle effects and many NPCs can cause temporary frame rate drops for a few seconds. **Workaround**: Lower graphics settings such as *Resolution Scale*, *Shadow Resolution*, or *Anti-Aliasing* in the Options menu.
+- **Crash / Freeze During In-Process Game Soft Reboot**: Confirming a restart-requiring change (language, voice language, or channel configuration) requests the game's in-process soft reboot without closing the PS5 app. Some builds may still crash or freeze during that game-level reboot; if so, close and relaunch the app manually. The committed setting remains saved.
+- **Temporary FPS Drops in Heavy Scenes**: The game may fall below the selected 30/60/90/120 FPS target in scenes with heavy particle effects and many NPCs. **Workaround**: Choose a lower FPS target or lower graphics settings such as *Resolution Scale*, *Shadow Resolution*, or *Anti-Aliasing* in the Options menu.
 - **Input Lag**: A slight amount of controller input latency can be felt on PS5. There is currently no complete fix for this yet.
 
 ---
@@ -72,7 +77,7 @@ By combining [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) (PowerPC-to
 
 - [ ] **Fix In-Game Reboot / Language Switching**: Resolve the crash/freeze when rebooting the game after changing language or restart-requiring settings.
 - [ ] **Native PlayStation 5 Trophies**: Replace the built-in *Unleashed Recompiled* achievement system with native PlayStation 5 system trophies.
-- [ ] **Additional PlayStation 5 Features**: Explore and integrate more PS5-specific features (DualSense haptics/adaptive triggers, system integration, and further performance/latency optimizations).
+- [ ] **Further PlayStation 5 Features**: Validate the new DualSense audio-haptics path across wired/wireless use; explore adaptive triggers, native trophies, system integration, and performance/latency optimizations beyond the conservative options already exposed.
 
 ---
 
@@ -127,6 +132,10 @@ Running `make` executes the entire end-to-end PlayStation 5 build pipeline autom
 6. **Cross-Compile, Link & FSELF Sign (`tools/build.sh` + `tools/radv-link.sh`)**:
    - Cross-compiles all C/C++ sources for `x86_64-sie-ps5` (`-msse4.1 -mssse3 -mcx16 -femulated-tls`), links with `libvulkan_radeon.ps5.a` and `ps5-emutls-cxa.o`, and signs the final PS5 FSELF executable (`pkg/PPSA99902/eboot.bin`).
 
+### Build-path note
+
+The native-dependency bootstrap handles paths containing spaces or parentheses (such as `TestVibration (2)`) for the pinned payload SDK and zlib install stages, so this particular install failure does not require moving the repository. Other target build steps still need normal PS5-toolchain validation.
+
 ---
 
 ## 📦 Deploying & Running on PlayStation 5
@@ -165,7 +174,7 @@ Launch `PPSA99902` from your PS5 homebrew launcher or send the launch controller
 nc -N <PS5_IP_ADDRESS> 9021 < pkg/controllers/ps5-UnleashedRecomp-launch-PPSA99902.elf
 ```
 
-Save data (`save/`), achievements (`achievements.bin`), and configuration (`config.toml`) are stored persistently inside `/data/homebrew/PPSA99902/user/` (`/app0/user/` in the sandbox).
+Save data (`save/`), achievements (`achievements.bin`), and configuration (`config.toml`) are stored under `/data/UnleashedRecomp/` by default. If `/data` cannot be written and elevation is unavailable, the executable root is used instead.
 
 ---
 
@@ -178,7 +187,7 @@ Save data (`save/`), achievements (`achievements.bin`), and configuration (`conf
 | `sce_sys/icon0.png` | PS5 Home Screen tile icon | `512x512` 32-bit RGBA PNG |
 | `sce_sys/pic0.png` → `sce_sys/pic0.dds` | Home Screen selection background | `3840x2160` `BC7_UNORM` (`DXGI_FORMAT_BC7_UNORM = 98`) DX10 2D DDS, 1 mip (`8,294,548` B) |
 | `sce_sys/pic1.png` → `sce_sys/pic1.dds` | Game launch splash screen | `3840x2160` `BC7_UNORM` (`DXGI_FORMAT_BC7_UNORM = 98`) DX10 2D DDS, 1 mip (`8,294,548` B) |
-| `sce_sys/snd0.{wav,mp3,ogg,flac}` → `sce_sys/snd0.at9` | Home Screen background music | Looped `48000` Hz stereo ATRAC9 RIFF/WAVE (`<= 2 MiB`, up to ~87s) |
+| `sce_sys/snd0.{wav,mp3,ogg,flac}` or `sce_sys/snd0.source.at9` → `sce_sys/snd0.at9` | Home Screen background music | Looped `48000` Hz stereo ATRAC9 RIFF/WAVE (`<= 2 MiB`, up to ~87s); newest editable source wins; `.source.at9` is copied byte-for-byte as fallback. Editable conversion uses the upstream converter with no extra fixed gain (source fades and the `-1 dBFS` safety ceiling remain). |
 
 To replace any asset via the CLI helper:
 
@@ -190,7 +199,7 @@ bash tools/prepare-assets.sh \
     --audio /path/to/music.mp3
 ```
 
-Or simply replace `sce_sys/pic0.png`, `sce_sys/pic1.png`, `sce_sys/icon0.png`, or `sce_sys/snd0.mp3` and run `make assets`.
+Or replace `sce_sys/pic0.png`, `sce_sys/pic1.png`, `sce_sys/icon0.png`, or `sce_sys/snd0.mp3` and run `make assets`. Supported editable audio files take precedence over `sce_sys/snd0.source.at9`; if multiple editable sources are present, the newest-modified one is selected. Use `bash tools/prepare-assets.sh --audio /path/to/music.mp3` to force an input. Editable audio uses the upstream ATRAC9 converter with no extra fixed gain or MP3-only attenuation; its fades and `-1 dBFS` peak-safety limit remain. The preserved `.source.at9` file is copied verbatim as a fallback and is never overwritten. The build validates and hashes the staged copy at `dist/PPSA99902/sce_sys/snd0.at9`, then validates and byte-compares the `pkg/PPSA99902/sce_sys/snd0.at9` copy. That only verifies local build artifacts: a PS5 log reporting an invalid `/user/app/PPSA99902/sce_sys/snd0.at9` path means the installed app path still needs to be checked on-console; uploading a folder to `/data/homebrew` does not by itself verify the Home Screen asset path. This `.at9` is Home Screen BGM, not gameplay/XAudio music.
 
 ---
 
@@ -220,8 +229,9 @@ To allow switching text and voice languages on PS5 without terminating the BigAp
 
 | Command | Description |
 | :--- | :--- |
-| `make` | Full automatic build: prepares `sce_sys/` assets, builds host tools, recompiles XEX & shaders from `ressources/`, builds RADV & SDK dependencies, compiles PS5 sources, and signs `pkg/PPSA99902/eboot.bin`. |
-| `make assets` | Converts `sce_sys/pic0.png` & `sce_sys/pic1.png` to 4K `BC7_UNORM` DX10 DDS (`pic0.dds` & `pic1.dds`), converts `sce_sys/snd0.{wav,mp3,ogg,flac}` to looped 48 kHz ATRAC9 (`snd0.at9`), and validates `sce_sys/`. |
+| `make` | Full automatic build: runs the ATRAC9-gain test, prepares `sce_sys/` assets, builds host tools, recompiles XEX & shaders from `ressources/`, builds RADV & SDK dependencies, compiles PS5 sources, and signs `pkg/PPSA99902/eboot.bin`. |
+| `make assets` | Converts `sce_sys/pic0.png` & `sce_sys/pic1.png` to 4K `BC7_UNORM` DX10 DDS (`pic0.dds` & `pic1.dds`), encodes editable audio with the upstream `wav_to_at9` converter or copies `sce_sys/snd0.source.at9` as fallback, and validates `sce_sys/`. |
+| `make audio-test` | Checks synthetic WAV-to-AT9 level and exercises the asset pipeline’s editable-source preference and byte-for-byte `.source.at9` fallback. |
 | `make tools` | Builds host recompiler and asset tools (`XenonRecomp`, `XenosRecomp`, `x_decompress`, `file_to_c`, `png_to_bc7_dds`, `wav_to_at9`, `ps5-native-tool`) into `tools/bin/`. |
 | `make recomp` | Runs the Xbox 360 XEX + Xenos shader + DLC recompilation pipeline from `ressources/{game,update,dlc}`. |
 | `make deploy PS5_HOST=<IP>` | Uploads `dist/PPSA99902/` to `/data/homebrew/PPSA99902/` via FTP and launches the title via port `9021`. |
@@ -265,6 +275,7 @@ All credit for the original *Unleashed Recompiled* project, recompilers, custom 
 - **[mihawk-99/PS5_Vulkan](https://github.com/mihawk-99/PS5_Vulkan)** & **[mihawk-99/PS5_vkQuake](https://github.com/mihawk-99/PS5_vkQuake)** — [@mihawk-99](https://github.com/mihawk-99) for the PlayStation 5 Vulkan toolchain, RADV static link recipe, clean-room `libc.prx` builder, FSELF signer (`ps5-native-tool`), and controller payloads.
 - **[ps5-payload-dev/sdk](https://github.com/ps5-payload-dev/sdk)** & **[mihawk-99/PS5_PayloadSDK](https://github.com/mihawk-99/PS5_PayloadSDK)** — [John Törnblom (@john-tornblom)](https://github.com/john-tornblom), [@mihawk-99](https://github.com/mihawk-99), and contributors for the PlayStation 5 Payload SDK, C/C++ standard libraries, Direct Memory heap/thread allocator (`libps5platform`), and Sony system service bindings.
 - **[ps5-payload-dev/pacbrew-repo](https://github.com/ps5-payload-dev/pacbrew-repo)** — Prebuilt PlayStation 5 static port libraries (`libSDL2`, `libzstd`, `libfreetype`, `libiconv`, `libpng`, `liblzma`, `zlib`).
+- **[mpereiraesaa/PS5-Lapy-JB-Daemon](https://github.com/mpereiraesaa/PS5-Lapy-JB-Daemon)** and **[blackbearreloaded/ProsperoEden](https://github.com/blackbearreloaded/ProsperoEden)** — upstream cooperative elevation protocol/helper and resident-first integration reference; the exact-title helper is optional and firmware-sensitive.
 - **[earthonion/ps5-at9-converter](https://github.com/earthonion/ps5-at9-converter)** — Reference for PlayStation 5 `snd0.at9` ATRAC9 container specifications.
 
 ### Third-Party Libraries & Research Projects

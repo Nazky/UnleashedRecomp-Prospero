@@ -68,6 +68,7 @@ void AchievementManager::Unlock(uint16_t id)
         }
     }
 
+    // The option controls only the local in-game overlay; unlock records are kept either way.
     if (Config::AchievementNotifications)
         AchievementOverlay::Open(id);
 }

@@ -1,7 +1,10 @@
 #include "config.h"
+#include <algorithm>
+#include <limits>
 #include <app.h>
 #include <os/logger.h>
 #include <ui/game_window.h>
+#include <ui/system_info_palette.h>
 #include <user/paths.h>
 #if defined(__PROSPERO__)
 #include <cstdio>
@@ -387,6 +390,12 @@ CONFIG_DEFINE_ENUM_TEMPLATE(EUIAlignmentMode)
     { "Edge",    EUIAlignmentMode::Edge },
     { "Centre",  EUIAlignmentMode::Centre },
     { "Center",  EUIAlignmentMode::Centre }
+};
+
+CONFIG_DEFINE_ENUM_TEMPLATE(EOverlayDisplayMode)
+{
+    { "Simple", EOverlayDisplayMode::Simple },
+    { "Advanced", EOverlayDisplayMode::Advanced }
 };
 
 #undef  CONFIG_DEFINE
@@ -846,7 +855,69 @@ static ELanguage DetectPS5SystemLanguage()
     }
     return ELanguage::English;
 }
+
+static int32_t SnapProsperoFPS(int32_t value)
+{
+    int32_t nearest = FPS_PROSPERO_OPTIONS[0];
+    int64_t bestDistance = std::numeric_limits<int64_t>::max();
+
+    for (int32_t i = 0; i < FPS_PROSPERO_OPTION_COUNT; ++i)
+    {
+        int64_t distance = static_cast<int64_t>(value) - FPS_PROSPERO_OPTIONS[i];
+        if (distance < 0)
+            distance = -distance;
+
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            nearest = FPS_PROSPERO_OPTIONS[i];
+        }
+    }
+
+    return nearest;
+}
 #endif
+
+static uint32_t SnapAnisotropicFiltering(uint32_t value)
+{
+    static constexpr uint32_t options[] = { 0, 2, 4, 8, 16 };
+    uint32_t nearest = options[0];
+    uint64_t bestDistance = std::numeric_limits<uint64_t>::max();
+
+    for (uint32_t option : options)
+    {
+        const uint64_t distance = value >= option ? uint64_t(value - option) : uint64_t(option - value);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            nearest = option;
+        }
+    }
+
+    return nearest;
+}
+
+static void MigrateLegacyOverlaySettings(toml::parse_result& toml)
+{
+    auto videoSection = toml["Video"].as_table();
+    if (videoSection == nullptr)
+        return;
+
+    // The overlay controls moved to [Overlay], but keep older [Video] values effective.
+    if (!Config::ShowSystemInfo.IsLoadedFromConfig && videoSection->contains("ShowSystemInfo"))
+    {
+        Config::ShowSystemInfo.Value = (*videoSection)["ShowSystemInfo"].value_or(
+            Config::ShowSystemInfo.DefaultValue);
+        Config::ShowSystemInfo.IsLoadedFromConfig = true;
+    }
+
+    if (!Config::SystemInfoAccentPreset.IsLoadedFromConfig && videoSection->contains("SystemInfoAccentPreset"))
+    {
+        Config::SystemInfoAccentPreset.Value = (*videoSection)["SystemInfoAccentPreset"].value_or(
+            Config::SystemInfoAccentPreset.DefaultValue);
+        Config::SystemInfoAccentPreset.IsLoadedFromConfig = true;
+    }
+}
 
 void Config::Load()
 {
@@ -918,27 +989,16 @@ void Config::Load()
             LOGFN_UTILITY("{} (0x{:X})", def->GetDefinition().c_str(), (intptr_t)def->GetValue());
 #endif
         }
+        MigrateLegacyOverlaySettings(toml);
     }
     catch (toml::parse_error& err)
     {
         LOGFN_ERROR("Failed to parse configuration: {}", err.what());
     }
 
-    auto restoreMarkerPath = GetUserPath() / ".ach_notif_restored";
-    if (FILE* markerFp = fopen(restoreMarkerPath.string().c_str(), "rb"))
-    {
-        fclose(markerFp);
-    }
-    else
-    {
-        Config::AchievementNotifications = true;
-        if (FILE* createFp = fopen(restoreMarkerPath.string().c_str(), "wb"))
-            fclose(createFp);
-        Config::Save();
-    }
-
     Config::AllowBackgroundInput = false;
     Config::MusicAttenuation = false;
+    Config::FPS.Value = SnapProsperoFPS(Config::FPS.Value);
     App::s_language = Config::Language;
 #else
     std::error_code ec;
@@ -965,6 +1025,7 @@ void Config::Load()
             LOGFN_UTILITY("{} (0x{:X})", def->GetDefinition().c_str(), (intptr_t)def->GetValue());
 #endif
         }
+        MigrateLegacyOverlaySettings(toml);
     }
     catch (toml::parse_error& err)
     {
@@ -973,6 +1034,19 @@ void Config::Load()
 
     App::s_language = Config::Language;
 #endif
+    Config::AnisotropicFiltering.Value = SnapAnisotropicFiltering(Config::AnisotropicFiltering.Value);
+    Config::SystemInfoAccentRed.Value = std::clamp(Config::SystemInfoAccentRed.Value, 0, 255);
+    Config::SystemInfoAccentGreen.Value = std::clamp(Config::SystemInfoAccentGreen.Value, 0, 255);
+    Config::SystemInfoAccentBlue.Value = std::clamp(Config::SystemInfoAccentBlue.Value, 0, 255);
+    if (!Config::SystemInfoAccentPreset.IsLoadedFromConfig)
+    {
+        // Upgrade users' saved RGB values to the closest preset once; future saves store the new index.
+        Config::SystemInfoAccentPreset.Value = system_info_palette::FindNearestIndex(
+            Config::SystemInfoAccentRed.Value,
+            Config::SystemInfoAccentGreen.Value,
+            Config::SystemInfoAccentBlue.Value);
+    }
+    Config::SystemInfoAccentPreset.Value = system_info_palette::ClampIndex(Config::SystemInfoAccentPreset.Value);
 }
 
 void Config::Save()

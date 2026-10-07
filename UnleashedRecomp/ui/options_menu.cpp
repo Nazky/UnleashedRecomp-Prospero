@@ -16,6 +16,7 @@
 #include <ui/button_guide.h>
 #include <ui/game_window.h>
 #include <ui/imgui_utils.h>
+#include <ui/system_info_palette.h>
 #include <app.h>
 #include <decompressor.h>
 #include <exports.h>
@@ -30,6 +31,9 @@ static constexpr double MILES_ELECTRIC_FOREGROUND_FADE_IN_TIME = MILES_ELECTRIC_
 static constexpr double MILES_ELECTRIC_FOREGROUND_FADE_OUT_TIME = MILES_ELECTRIC_FOREGROUND_FADE_IN_TIME + MILES_ELECTRIC_FOREGROUND_FADE_DURATION;
 
 static constexpr double VALUE_SLIDER_INTRO_DURATION = 20.0;
+
+static constexpr uint32_t ANISOTROPIC_FILTERING_OPTIONS[] = { 0, 2, 4, 8, 16 };
+static constexpr int32_t ANISOTROPIC_FILTERING_OPTION_COUNT = 5;
 
 static constexpr double CONTAINER_LINE_ANIMATION_DURATION = 8.0;
 
@@ -59,7 +63,7 @@ static constexpr float PADDING_NARROW_GRID_COUNT = 1.0f;
 
 static constexpr float INFO_TEXT_MARQUEE_DELAY = 1.2f;
 
-static constexpr int32_t g_categoryCount = 4;
+static constexpr int32_t g_categoryCount = 5;
 static int32_t g_categoryIndex;
 static ImVec2 g_categoryAnimMin;
 static ImVec2 g_categoryAnimMax;
@@ -425,6 +429,7 @@ static std::string& GetCategory(int index)
         case 1: return Localise("Options_Category_Input");
         case 2: return Localise("Options_Category_Audio");
         case 3: return Localise("Options_Category_Video");
+        case 4: return Localise("Options_Category_Overlay");
     }
 
     return g_localeMissing;
@@ -473,6 +478,7 @@ static bool DrawCategories()
     {
         ResetSelection();
         Game_PlaySound("sys_actstg_score");
+        hid::PulseMenuVibration();
     }
 
     auto drawList = ImGui::GetBackgroundDrawList();
@@ -764,7 +770,7 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
 
     constexpr float OPTION_NARROW_GRID_COUNT = 36.0f;
     constexpr float OPTION_WIDE_GRID_COUNT = 54.0f;
-    constexpr bool IS_SLIDER_TYPE = std::is_same_v<T, float> || std::is_same_v<T, int32_t>;
+    constexpr bool IS_SLIDER_TYPE = std::is_same_v<T, float> || std::is_same_v<T, int32_t> || std::is_same_v<T, uint32_t>;
 
     auto isValueSlider = IS_SLIDER_TYPE && isSlider;
     auto gridSize = Scale(GRID_SIZE);
@@ -808,6 +814,7 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
                         VideoConfigValueChangedCallback(config);
 
                         Game_PlaySound("sys_worldmap_finaldecide");
+                        hid::PulseMenuVibration();
                     }
                 }
                 else
@@ -831,6 +838,7 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
                                 config->LockCallback(config);
 
                             Game_PlaySound("sys_worldmap_decide");
+                            hid::PulseMenuVibration();
                         }
                         else
                         {
@@ -844,6 +852,7 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
                             }
 
                             Game_PlaySound("sys_worldmap_finaldecide");
+                            hid::PulseMenuVibration();
                         }
                     }
                     else if (padState.IsTapped(SWA::eKeyState_B))
@@ -854,6 +863,7 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
                         g_lockedOnOption = false;
 
                         Game_PlaySound("sys_worldmap_cansel");
+                        hid::PulseMenuVibration();
                     }
 
                     lockedOnOption = g_lockedOnOption;
@@ -875,6 +885,7 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
                     }
 
                     Game_PlaySound("sys_worldmap_decide");
+                    hid::PulseMenuVibration();
                 }
             }
             else
@@ -949,7 +960,7 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
 
     if (isSlider)
     {
-        if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int32_t>)
+        if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int32_t> || std::is_same_v<T, uint32_t>)
         {
             if (lockedOnOption)
             {
@@ -1049,7 +1060,7 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
             if (increment || decrement)
                 Game_PlaySound("sys_actstg_pausecursor");
         }
-        else if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int32_t>)
+        else if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int32_t> || std::is_same_v<T, uint32_t>)
         {
             float deltaTime = std::fmin(ImGui::GetIO().DeltaTime, 1.0f / 15.0f);
 
@@ -1082,7 +1093,127 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
 
             do
             {
-                if constexpr (std::is_integral_v<T>)
+                if constexpr (std::is_same_v<T, uint32_t>)
+                {
+                    if (config == &Config::AnisotropicFiltering && !isSlider)
+                    {
+                        int32_t optionIndex = 0;
+                        for (int32_t index = 0; index < ANISOTROPIC_FILTERING_OPTION_COUNT; ++index)
+                        {
+                            if (config->Value == ANISOTROPIC_FILTERING_OPTIONS[index])
+                            {
+                                optionIndex = index;
+                                break;
+                            }
+                        }
+
+                        if (decrement || increment)
+                        {
+                            optionIndex = (optionIndex + ANISOTROPIC_FILTERING_OPTION_COUNT + (increment ? 1 : -1)) % ANISOTROPIC_FILTERING_OPTION_COUNT;
+                            config->Value = ANISOTROPIC_FILTERING_OPTIONS[optionIndex];
+                        }
+                    }
+                    else if (decrement && config->Value > valueMin)
+                    {
+                        --config->Value;
+                    }
+                    else if (increment && config->Value < valueMax)
+                    {
+                        ++config->Value;
+                    }
+                }
+                else if constexpr (std::is_same_v<T, int32_t>)
+                {
+                    if (config == &Config::SystemInfoAccentPreset)
+                    {
+                        const int32_t oldIndex = system_info_palette::ClampIndex(config->Value);
+                        const int32_t oldPage = oldIndex / static_cast<int32_t>(system_info_palette::kPageSize);
+                        int32_t page = oldPage;
+                        int32_t local = oldIndex % static_cast<int32_t>(system_info_palette::kPageSize);
+                        const int32_t pageCount = static_cast<int32_t>(system_info_palette::kPageCount);
+
+                        const bool previousPage = padState.IsTapped(SWA::eKeyState_LeftBumper);
+                        const bool nextPage = padState.IsTapped(SWA::eKeyState_RightBumper);
+                        if (previousPage || nextPage)
+                        {
+                            page = (page + pageCount + (nextPage ? 1 : -1)) % pageCount;
+                            const int32_t pageStart = page * static_cast<int32_t>(system_info_palette::kPageSize);
+                            const int32_t pageLength = std::min(
+                                static_cast<int32_t>(system_info_palette::kPageSize),
+                                static_cast<int32_t>(system_info_palette::kColorCount) - pageStart);
+                            local = std::min(local, pageLength - 1);
+                        }
+                        else
+                        {
+                            const int32_t pageStart = page * static_cast<int32_t>(system_info_palette::kPageSize);
+                            const int32_t pageLength = std::min(
+                                static_cast<int32_t>(system_info_palette::kPageSize),
+                                static_cast<int32_t>(system_info_palette::kColorCount) - pageStart);
+                            const int32_t column = local % static_cast<int32_t>(system_info_palette::kColumns);
+                            const bool upTapped = padState.IsTapped(SWA::eKeyState_DpadUp);
+                            const bool downTapped = padState.IsTapped(SWA::eKeyState_DpadDown);
+
+                            if (leftTapped && column > 0)
+                                --local;
+                            else if (rightTapped && column + 1 < static_cast<int32_t>(system_info_palette::kColumns) && local + 1 < pageLength)
+                                ++local;
+                            else if (upTapped)
+                            {
+                                if (local >= static_cast<int32_t>(system_info_palette::kColumns))
+                                    local -= static_cast<int32_t>(system_info_palette::kColumns);
+                                else
+                                {
+                                    const int32_t lastRowStart = ((pageLength - 1) /
+                                        static_cast<int32_t>(system_info_palette::kColumns)) *
+                                        static_cast<int32_t>(system_info_palette::kColumns);
+                                    const int32_t candidate = lastRowStart + column;
+                                    if (candidate < pageLength)
+                                        local = candidate;
+                                }
+                            }
+                            else if (downTapped)
+                            {
+                                const int32_t candidate = local + static_cast<int32_t>(system_info_palette::kColumns);
+                                if (candidate < pageLength)
+                                    local = candidate;
+                                else if (column < pageLength)
+                                    local = column;
+                            }
+                        }
+
+                        const int32_t newIndex = page * static_cast<int32_t>(system_info_palette::kPageSize) + local;
+                        config->Value = newIndex;
+                        increment = newIndex != oldIndex;
+                        decrement = increment;
+                    }
+                    else if (config == &Config::FPS && !isSlider)
+                    {
+                        int32_t optionIndex = 0;
+                        for (int32_t index = 0; index < FPS_PROSPERO_OPTION_COUNT; ++index)
+                        {
+                            if (config->Value == FPS_PROSPERO_OPTIONS[index])
+                            {
+                                optionIndex = index;
+                                break;
+                            }
+                        }
+
+                        if (decrement || increment)
+                        {
+                            optionIndex = (optionIndex + FPS_PROSPERO_OPTION_COUNT + (increment ? 1 : -1)) % FPS_PROSPERO_OPTION_COUNT;
+                            config->Value = FPS_PROSPERO_OPTIONS[optionIndex];
+                        }
+                    }
+                    else if (decrement)
+                    {
+                        config->Value -= 1;
+                    }
+                    else if (increment)
+                    {
+                        config->Value += 1;
+                    }
+                }
+                else if constexpr (std::is_integral_v<T>)
                 {
                     if (decrement)
                         config->Value -= 1;
@@ -1104,10 +1235,11 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
 
             bool isConfigValueInBounds = config->Value >= valueMin && config->Value <= valueMax;
 
-            if ((increment || decrement) && isConfigValueInBounds && isPlayIncrementSound) 
+            if ((increment || decrement) && isConfigValueInBounds && isPlayIncrementSound)
             {
                 g_lastIncrementSoundTime = time;
                 Game_PlaySound("sys_actstg_twn_speechbutton");
+                hid::PulseMenuVibration();
             }
 
             config->Value = std::clamp(config->Value, valueMin, valueMax);
@@ -1154,6 +1286,14 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
         {
             valueText = fmt::format("{}", config->Value + 1);
         }
+        else if (config == &Config::SystemInfoAccentPreset)
+        {
+            const auto paletteIndex = system_info_palette::ClampIndex(config->Value);
+            const auto& color = system_info_palette::kColors[static_cast<std::size_t>(paletteIndex)];
+            const auto page = static_cast<std::size_t>(paletteIndex) / system_info_palette::kPageSize + 1;
+            valueText = fmt::format("#{:02X}{:02X}{:02X}  {:02}/{:02}",
+                color.r, color.g, color.b, page, system_info_palette::kPageCount);
+        }
         else
         {
             valueText = fmt::format("{}", config->Value);
@@ -1161,6 +1301,13 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
             if (isSlider && config->Value >= valueMax)
                 valueText = Localise("Options_Value_Max");
         }
+    }
+    else if constexpr (std::is_same_v<T, uint32_t>)
+    {
+        if (config == &Config::AnisotropicFiltering)
+            valueText = config->Value == 0 ? Localise("Options_Value_None") : fmt::format("{}x", config->Value);
+        else
+            valueText = fmt::format("{}", config->Value);
     }
     else
     {
@@ -1278,19 +1425,57 @@ static void DrawConfigOptions()
 
             DrawConfigOption(rowCount++, yOffset, &Config::AspectRatio, true);
             DrawConfigOption(rowCount++, yOffset, &Config::ResolutionScale, true, nullptr, 0.25f, 1.0f, 2.0f);
+#if !defined(__PROSPERO__)
             DrawConfigOption(rowCount++, yOffset, &Config::Fullscreen, true);
+#endif
             DrawConfigOption(rowCount++, yOffset, &Config::VSync, true);
+#if defined(__PROSPERO__)
+            DrawConfigOption(rowCount++, yOffset, &Config::FPS, true, nullptr,
+                FPS_PROSPERO_OPTIONS[0], FPS_PROSPERO_OPTIONS[1],
+                FPS_PROSPERO_OPTIONS[FPS_PROSPERO_OPTION_COUNT - 1], false);
+#else
             DrawConfigOption(rowCount++, yOffset, &Config::FPS, true, nullptr, FPS_MIN, 120, FPS_MAX);
+#endif
             DrawConfigOption(rowCount++, yOffset, &Config::Brightness, true);
             DrawConfigOption(rowCount++, yOffset, &Config::AntiAliasing, Config::AntiAliasing.InaccessibleValues.size() != 3, &Localise("Options_Desc_NotAvailableHardware"));
             DrawConfigOption(rowCount++, yOffset, &Config::TransparencyAntiAliasing, Config::AntiAliasing != EAntiAliasing::None, &Localise("Options_Desc_NotAvailableMSAA"));
+            DrawConfigOption(rowCount++, yOffset, &Config::AnisotropicFiltering, true, nullptr, 0u, 8u, 16u, false);
             DrawConfigOption(rowCount++, yOffset, &Config::ShadowResolution, true);
             DrawConfigOption(rowCount++, yOffset, &Config::GITextureFiltering, true);
+            DrawConfigOption(rowCount++, yOffset, &Config::DepthOfFieldQuality, true);
             DrawConfigOption(rowCount++, yOffset, &Config::MotionBlur, true);
             DrawConfigOption(rowCount++, yOffset, &Config::XboxColorCorrection, true);
             DrawConfigOption(rowCount++, yOffset, &Config::CutsceneAspectRatio, true);
             DrawConfigOption(rowCount++, yOffset, &Config::UIAlignmentMode, true);
 
+            break;
+        }
+
+        case 4: // OVERLAY
+        {
+            DrawConfigOption(rowCount++, yOffset, &Config::ShowSystemInfo, true);
+            if (Config::ShowSystemInfo)
+            {
+                DrawConfigOption(rowCount++, yOffset, &Config::OverlayMode, true);
+                DrawConfigOption(rowCount++, yOffset, &Config::SystemInfoAccentPreset, true, nullptr,
+                    0, 0, static_cast<int32_t>(system_info_palette::kColorCount - 1), false);
+
+                if (Config::OverlayMode == EOverlayDisplayMode::Advanced)
+                {
+                    DrawConfigOption(rowCount++, yOffset, &Config::OverlayShowCPUUpdateTime, true);
+                    DrawConfigOption(rowCount++, yOffset, &Config::OverlayShowGPUName, true);
+                    DrawConfigOption(rowCount++, yOffset, &Config::OverlayShowGPUFrameTime, true);
+#if defined(__PROSPERO__)
+                    DrawConfigOption(rowCount++, yOffset, &Config::OverlayShowSoCSensors, true);
+#endif
+                    DrawConfigOption(rowCount++, yOffset, &Config::OverlayShowGameHeap, true);
+                    DrawConfigOption(rowCount++, yOffset, &Config::OverlayShowPhysicalHeap, true);
+                    DrawConfigOption(rowCount++, yOffset, &Config::OverlayShowRenderResolution, true);
+                    DrawConfigOption(rowCount++, yOffset, &Config::OverlayShowUserDataPath, true);
+                    DrawConfigOption(rowCount++, yOffset, &Config::OverlayShowExecutablePath, true);
+                    DrawConfigOption(rowCount++, yOffset, &Config::OverlayShowGameMount, true);
+                }
+            }
             break;
         }
     }
@@ -1366,6 +1551,7 @@ static void DrawConfigOptions()
         g_rowSelectionTime = time;
         g_prevSelectedRowIndex = prevSelectedRowIndex;
         Game_PlaySound("sys_worldmap_cursor");
+        hid::PulseMenuVibration();
     }
 
     g_upWasHeld = upIsHeld;
@@ -1446,6 +1632,68 @@ static void DrawSettingsPanel(ImVec2 settingsMin, ImVec2 settingsMax)
     drawList->PopClipRect();
 }
 
+static void DrawSystemInfoAccentPalettePage(ImDrawList* drawList, ImVec2 min, ImVec2 max)
+{
+    if (drawList == nullptr)
+        return;
+
+    const int32_t selectedIndex = system_info_palette::ClampIndex(Config::SystemInfoAccentPreset.Value);
+    const std::size_t page = static_cast<std::size_t>(selectedIndex) / system_info_palette::kPageSize;
+    const std::size_t pageStart = page * system_info_palette::kPageSize;
+    const auto& selected = system_info_palette::kColors[static_cast<std::size_t>(selectedIndex)];
+
+    drawList->AddRectFilled(min, max, IM_COL32(5, 9, 14, 255), Scale(5.0f));
+    drawList->AddRect(min, max, IM_COL32(120, 150, 170, 190), Scale(5.0f), 0, Scale(1.0f));
+
+    const auto pageLabel = fmt::format("#{:02X}{:02X}{:02X}     {:02}/{:02}",
+        selected.r, selected.g, selected.b, page + 1, system_info_palette::kPageCount);
+    const float headerSize = Scale(20.0f);
+    const ImVec2 padding = { Scale(12.0f), Scale(8.0f) };
+    drawList->AddText(g_newRodinFont, headerSize,
+        { min.x + padding.x, min.y + padding.y }, IM_COL32(255, 255, 255, 255), pageLabel.c_str());
+
+    const float gridTop = min.y + Scale(34.0f);
+    const float gap = Scale(5.0f);
+    const float gridWidth = max.x - min.x - padding.x * 2.0f;
+    const float gridHeight = max.y - gridTop - padding.y;
+    const float cellWidth = (gridWidth - gap * float(system_info_palette::kColumns - 1)) /
+        float(system_info_palette::kColumns);
+    const float cellHeight = (gridHeight - gap * float(system_info_palette::kRows - 1)) /
+        float(system_info_palette::kRows);
+
+    for (std::size_t localIndex = 0; localIndex < system_info_palette::kPageSize; ++localIndex)
+    {
+        const std::size_t colorIndex = pageStart + localIndex;
+        if (colorIndex >= system_info_palette::kColorCount)
+            break;
+
+        const auto& color = system_info_palette::kColors[colorIndex];
+        const std::size_t column = localIndex % system_info_palette::kColumns;
+        const std::size_t row = localIndex / system_info_palette::kColumns;
+        const ImVec2 cellMin = {
+            min.x + padding.x + float(column) * (cellWidth + gap),
+            gridTop + float(row) * (cellHeight + gap)
+        };
+        const ImVec2 cellMax = { cellMin.x + cellWidth, cellMin.y + cellHeight };
+        const float rounding = Scale(3.0f);
+
+        drawList->AddRectFilled(cellMin, cellMax,
+            IM_COL32(color.r, color.g, color.b, 255), rounding);
+        if (colorIndex == static_cast<std::size_t>(selectedIndex))
+        {
+            drawList->AddRect(
+                { cellMin.x - Scale(2.0f), cellMin.y - Scale(2.0f) },
+                { cellMax.x + Scale(2.0f), cellMax.y + Scale(2.0f) },
+                IM_COL32(0, 0, 0, 255), rounding + Scale(2.0f), 0, Scale(3.0f));
+            drawList->AddRect(cellMin, cellMax, IM_COL32(255, 255, 255, 255), rounding, 0, Scale(2.0f));
+        }
+        else
+        {
+            drawList->AddRect(cellMin, cellMax, IM_COL32(0, 0, 0, 180), rounding, 0, Scale(1.0f));
+        }
+    }
+}
+
 static void DrawInfoPanel(ImVec2 infoMin, ImVec2 infoMax)
 {
     auto drawList = ImGui::GetBackgroundDrawList();
@@ -1467,7 +1715,11 @@ static void DrawInfoPanel(ImVec2 infoMin, ImVec2 infoMax)
         ImVec2 thumbnailMin = { clipRectMin.x, clipRectMin.y + Scale(GRID_SIZE / 2.0f) };
         ImVec2 thumbnailMax = { clipRectMax.x, thumbnailMin.y + thumbnailHeight };
 
-        if (g_isStage)
+        if (g_selectedItem == &Config::SystemInfoAccentPreset)
+        {
+            DrawSystemInfoAccentPalettePage(drawList, thumbnailMin, thumbnailMax);
+        }
+        else if (g_isStage)
         {
             drawList->AddImage(thumbnail, thumbnailMin, thumbnailMax);
         }

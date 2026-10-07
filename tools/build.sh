@@ -4,7 +4,23 @@
 
 set -euo pipefail
 
+PACKAGE_LAPY_HELPER="${PACKAGE_LAPY_HELPER:-0}"
+if [[ "$PACKAGE_LAPY_HELPER" != "0" && "$PACKAGE_LAPY_HELPER" != "1" ]]; then
+    echo "ERROR: PACKAGE_LAPY_HELPER must be 0 or 1." >&2
+    exit 2
+fi
+if [[ "$PACKAGE_LAPY_HELPER" == "1" && "${ACK_UNVALIDATED_LAPY_HELPER:-0}" != "1" ]]; then
+    echo "ERROR: packaging the unvalidated Lapy helper requires ACK_UNVALIDATED_LAPY_HELPER=1." >&2
+    echo "Review docs/PS5-STORAGE-INPUT-GRAPHICS.md before opting in." >&2
+    exit 2
+fi
+
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+TITLE_ID="${TITLE_ID:-PPSA99902}"
+if [[ ! "$TITLE_ID" =~ ^PPS[AB][0-9]{5}$ ]]; then
+    echo "ERROR: invalid PS5 title ID: $TITLE_ID" >&2
+    exit 2
+fi
 PLUME_ROOT="${PLUME_ROOT:-$ROOT/thirdparty/plume}"
 
 # Locate or bootstrap .deps (supports local .deps or shared /opt/ps5-cache/refs/PS5_Vulkan/.deps)
@@ -34,7 +50,10 @@ if [[ ! -x "$SDK_ROOT/bin/prospero-lld" || ! -f "$RADV_ARCHIVE" || ! -d "$PACBRE
     PACBREW_SYSROOT="$DEPS_ROOT/pacbrew/v0.40.2/sysroot/user/homebrew"
 fi
 
-TITLE_ID="PPSA99902"
+if [[ "$PACKAGE_LAPY_HELPER" == "1" ]]; then
+    PS5_PAYLOAD_SDK="$SDK_ROOT" bash "$ROOT/tools/build-lapy-helper.sh"
+fi
+
 MODULE_SDK=0x02000009
 COMPANION_SDK=0x08050001
 FSELF_MAGIC=0x1D3D154F
@@ -83,6 +102,7 @@ COMMON_INCLUDES=(
     -I"$BUILD_DIR"
     -I"$ROOT/UnleashedRecomp"
     -I"$ROOT/UnleashedRecomp/api"
+    -I"$ROOT/extras/SystemInfoOverlay"
     -I"$ROOT/UnleashedRecompLib"
     -I"$ROOT/thirdparty/concurrentqueue"
     -I"$ROOT/thirdparty/ddspp"
@@ -254,6 +274,10 @@ while IFS= read -r -d '' cfile; do
 done < <(find "$BUILD_DIR/res" -name "*.c" -print0 | sort -z)
 
 echo "==> [5/7] Queueing UnleashedRecomp C++ sources..."
+if [[ ! -f "$ROOT/UnleashedRecomp/ps5/elevation.cpp" ]]; then
+    echo "ERROR: missing UnleashedRecomp/ps5/elevation.cpp; this PS5 build needs it for /data elevation." >&2
+    exit 2
+fi
 UNLEASHED_SRCS=(
     "$ROOT/UnleashedRecomp/app.cpp"
     "$ROOT/UnleashedRecomp/exports.cpp"
@@ -262,11 +286,14 @@ UNLEASHED_SRCS=(
     "$ROOT/UnleashedRecomp/preload_executable.cpp"
     "$ROOT/UnleashedRecomp/sdl_listener.cpp"
     "$ROOT/UnleashedRecomp/stdafx.cpp"
+    "$ROOT/extras/SystemInfoOverlay/system_info_overlay.cpp"
     "$ROOT/UnleashedRecomp/version.cpp"
     "$ROOT"/UnleashedRecomp/kernel/*.cpp
     "$ROOT"/UnleashedRecomp/kernel/io/*.cpp
     "$ROOT"/UnleashedRecomp/locale/*.cpp
     "$ROOT"/UnleashedRecomp/os/linux/*.cpp
+    # PS5-specific facilities are explicit in this custom build.
+    "$ROOT/UnleashedRecomp/ps5/elevation.cpp"
     "$ROOT"/UnleashedRecomp/cpu/*.cpp
     "$ROOT"/UnleashedRecomp/gpu/*.cpp
     "$ROOT"/UnleashedRecomp/gpu/imgui/*.cpp
@@ -371,8 +398,31 @@ for asset in icon0.png pic0.dds pic1.dds snd0.at9; do
         cp -lf "$ROOT/sce_sys/$asset" "$APP_DIR/sce_sys/$asset" 2>/dev/null || cp "$ROOT/sce_sys/$asset" "$APP_DIR/sce_sys/$asset"
     fi
 done
+bash "$ROOT/tools/validate-assets.sh" "$APP_DIR/sce_sys"
+if [[ ! -s "$ROOT/sce_sys/snd0.at9" || ! -s "$APP_DIR/sce_sys/snd0.at9" ]]; then
+    echo "ERROR: Home Screen audio is missing from the source or staged app tree" >&2
+    exit 2
+fi
+if ! cmp -s "$ROOT/sce_sys/snd0.at9" "$APP_DIR/sce_sys/snd0.at9"; then
+    echo "ERROR: staged Home Screen audio differs from sce_sys/snd0.at9" >&2
+    exit 2
+fi
+audio_sha256="$(sha256sum "$APP_DIR/sce_sys/snd0.at9")"
+printf '==> [package] Staged sce_sys/snd0.at9 (%s; 0 dB recipe)\n' "${audio_sha256%% *}"
+
 [[ -f "$ROOT/runtime/libc.prx" ]] || bash "$ROOT/tools/rebuild-libc.sh"
 cp "$ROOT/runtime/libc.prx" "$APP_DIR/sce_module/libc.prx"
+
+if [[ "$PACKAGE_LAPY_HELPER" == "1" ]]; then
+    LAPY_HELPER_DIR="$ROOT/build/lapy-owned-helper"
+    for helper_file in lapy.elf lapy-manifest.json LICENSE.Lapy; do
+        [[ -f "$LAPY_HELPER_DIR/$helper_file" ]] || {
+            echo "ERROR: verified helper artifact is missing: $LAPY_HELPER_DIR/$helper_file" >&2
+            exit 2
+        }
+        cp "$LAPY_HELPER_DIR/$helper_file" "$APP_DIR/$helper_file"
+    done
+fi
 
 # If ./ressources/game exists with retail files, stage ressources/ into the PS5 title folder
 if [[ -d "$ROOT/ressources/game" ]] && [[ -n "$(ls -A "$ROOT/ressources/game" 2>/dev/null)" ]]; then
@@ -387,6 +437,12 @@ fi
 rm -rf -- "$PKG_DIR/$TITLE_ID"
 mkdir -p "$PKG_DIR"
 cp -al "$APP_DIR" "$PKG_DIR/$TITLE_ID" 2>/dev/null || cp -a "$APP_DIR" "$PKG_DIR/$TITLE_ID"
+bash "$ROOT/tools/validate-assets.sh" "$PKG_DIR/$TITLE_ID/sce_sys"
+if [[ ! -s "$PKG_DIR/$TITLE_ID/sce_sys/snd0.at9" ]] || ! cmp -s "$ROOT/sce_sys/snd0.at9" "$PKG_DIR/$TITLE_ID/sce_sys/snd0.at9"; then
+    echo "ERROR: packaged Home Screen audio is missing or differs from sce_sys/snd0.at9" >&2
+    exit 2
+fi
 
 printf 'Build complete:\n  dist: %s (%s bytes)\n  pkg:  %s\n' \
     "$APP_DIR" "$(stat -c %s "$APP_DIR/eboot.bin")" "$PKG_DIR/$TITLE_ID"
+

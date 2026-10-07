@@ -239,6 +239,10 @@ int main(int argc, char *argv[])
     (void)sceSystemServiceHideSplashScreen();
 #endif
 
+    // Select the writable PS5 user-data directory, requesting filesystem access
+    // before Config::Load() and before any application workers are started.
+    InitializeUserPath();
+
     os::process::CheckConsole();
 
     if (!os::registry::Init())

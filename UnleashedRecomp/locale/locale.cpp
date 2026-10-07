@@ -105,6 +105,17 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
         }
     },
     {
+        "Options_Category_Overlay",
+        {
+            { ELanguage::English,  "OVERLAY" },
+            { ELanguage::Japanese, "オーバーレイ" },
+            { ELanguage::German,   "OVERLAY" },
+            { ELanguage::French,   "SUPERPOSITION" },
+            { ELanguage::Spanish,  "SUPERPOSICIÓN" },
+            { ELanguage::Italian,  "SOVRAPPOSIZIONE" }
+        }
+    },
+    {
         // Notes: integer values in the options menu (e.g. FPS) when at their maximum value.
         "Options_Value_Max",
         {
@@ -276,6 +287,39 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
             { ELanguage::French,   "Succès déverrouillé !" },
             { ELanguage::Spanish,  "¡Logro desbloqueado!" },
             { ELanguage::Italian,  "Obiettivo sbloccato!" }
+        }
+    },
+    {
+        "Trophy_Earned",
+        {
+            { ELanguage::English,  "Trophy earned!" },
+            { ELanguage::Japanese, "トロフィーを獲得しました！" },
+            { ELanguage::German,   "Trophäe erhalten!" },
+            { ELanguage::French,   "Trophée obtenu !" },
+            { ELanguage::Spanish,  "¡Trofeo conseguido!" },
+            { ELanguage::Italian,  "Trofeo ottenuto!" }
+        }
+    },
+    {
+        "Trophy_Welcome_Name",
+        {
+            { ELanguage::English,  "Welcome to Sonic Unleashed Recompiled" },
+            { ELanguage::Japanese, "Sonic Unleashed Recompiledへようこそ" },
+            { ELanguage::German,   "Willkommen bei Sonic Unleashed Recompiled" },
+            { ELanguage::French,   "Bienvenue dans Sonic Unleashed Recompiled" },
+            { ELanguage::Spanish,  "Te damos la bienvenida a Sonic Unleashed Recompiled" },
+            { ELanguage::Italian,  "Benvenuto in Sonic Unleashed Recompiled" }
+        }
+    },
+    {
+        "Trophy_Welcome_Description",
+        {
+            { ELanguage::English,  "Start Sonic Unleashed Recompiled for the first time." },
+            { ELanguage::Japanese, "Sonic Unleashed Recompiledを初めて起動する。" },
+            { ELanguage::German,   "Starte Sonic Unleashed Recompiled zum ersten Mal." },
+            { ELanguage::French,   "Lancez Sonic Unleashed Recompiled pour la première fois." },
+            { ELanguage::Spanish,  "Inicia Sonic Unleashed Recompiled por primera vez." },
+            { ELanguage::Italian,  "Avvia Sonic Unleashed Recompiled per la prima volta." }
         }
     },
     {
@@ -710,6 +754,193 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
             { ELanguage::French,   "Une mise à jour est disponible !\n\nVoulez-vous visiter la page\ndes mises à jour pour la\ntélécharger ?" },
             { ELanguage::Spanish,  "¡Hay una actualización disponible!\n\n¿Quieres ir a la página\npara descargarla?" },
             { ELanguage::Italian,  "È disponibile un aggiornamento!\n\nVuoi visitare la pagina releases\nper scaricarlo?" }
+        }
+    },
+    {
+        "SystemInfo_CPU",
+        {
+            { ELanguage::English,  "CPU update" },
+            { ELanguage::Japanese, "CPU更新" },
+            { ELanguage::German,   "CPU-Update" },
+            { ELanguage::French,   "CPU (jeu)" },
+            { ELanguage::Spanish,  "CPU (juego)" },
+            { ELanguage::Italian,  "CPU (gioco)" }
+        }
+    },
+    {
+        "SystemInfo_GPU",
+        {
+            { ELanguage::English,  "GPU" },
+            { ELanguage::Japanese, "GPU" },
+            { ELanguage::German,   "GPU" },
+            { ELanguage::French,   "GPU" },
+            { ELanguage::Spanish,  "GPU" },
+            { ELanguage::Italian,  "GPU" }
+        }
+    },
+    {
+        "SystemInfo_GPUFrame",
+        {
+            { ELanguage::English,  "GPU frame" },
+            { ELanguage::Japanese, "GPU時間" },
+            { ELanguage::German,   "GPU-Frame" },
+            { ELanguage::French,   "Temps GPU" },
+            { ELanguage::Spanish,  "Tiempo GPU" },
+            { ELanguage::Italian,  "Tempo GPU" }
+        }
+    },
+    {
+        "SystemInfo_FPS",
+        {
+            { ELanguage::English,  "FPS" },
+            { ELanguage::Japanese, "FPS" },
+            { ELanguage::German,   "FPS" },
+            { ELanguage::French,   "IPS" },
+            { ELanguage::Spanish,  "FPS" },
+            { ELanguage::Italian,  "FPS" }
+        }
+    },
+    {
+        "SystemInfo_SectionPerformance",
+        {
+            { ELanguage::English,  "PERFORMANCE" },
+            { ELanguage::Japanese, "性能" },
+            { ELanguage::German,   "LEISTUNG" },
+            { ELanguage::French,   "PERFORMANCES" },
+            { ELanguage::Spanish,  "RENDIMIENTO" },
+            { ELanguage::Italian,  "PRESTAZIONI" }
+        }
+    },
+    {
+        "SystemInfo_SectionSoCSensors",
+        {
+            { ELanguage::English,  "SOC SENSORS" },
+            { ELanguage::Japanese, "SoCセンサー" },
+            { ELanguage::German,   "SOC-SENSOREN" },
+            { ELanguage::French,   "CAPTEURS SOC" },
+            { ELanguage::Spanish,  "SENSORES SOC" },
+            { ELanguage::Italian,  "SENSORI SOC" }
+        }
+    },
+    {
+        "SystemInfo_SectionMemory",
+        {
+            { ELanguage::English,  "MEMORY" },
+            { ELanguage::Japanese, "メモリ" },
+            { ELanguage::German,   "SPEICHER" },
+            { ELanguage::French,   "MÉMOIRE" },
+            { ELanguage::Spanish,  "MEMORIA" },
+            { ELanguage::Italian,  "MEMORIA" }
+        }
+    },
+    {
+        "SystemInfo_SectionDisplay",
+        {
+            { ELanguage::English,  "DISPLAY" },
+            { ELanguage::Japanese, "表示" },
+            { ELanguage::German,   "ANZEIGE" },
+            { ELanguage::French,   "AFFICHAGE" },
+            { ELanguage::Spanish,  "PANTALLA" },
+            { ELanguage::Italian,  "SCHERMO" }
+        }
+    },
+    {
+        "SystemInfo_SectionPaths",
+        {
+            { ELanguage::English,  "PATHS" },
+            { ELanguage::Japanese, "パス" },
+            { ELanguage::German,   "PFADE" },
+            { ELanguage::French,   "CHEMINS" },
+            { ELanguage::Spanish,  "RUTAS" },
+            { ELanguage::Italian,  "PERCORSI" }
+        }
+    },
+    {
+        "SystemInfo_GameHeap",
+        {
+            { ELanguage::English,  "Game RAM heap" },
+            { ELanguage::Japanese, "ゲームRAM" },
+            { ELanguage::German,   "Spiel-RAM/Heap" },
+            { ELanguage::French,   "RAM du jeu" },
+            { ELanguage::Spanish,  "RAM del juego" },
+            { ELanguage::Italian,  "RAM di gioco" }
+        }
+    },
+    {
+        "SystemInfo_PhysicalHeap",
+        {
+            { ELanguage::English,  "Physical RAM heap" },
+            { ELanguage::Japanese, "物理RAM" },
+            { ELanguage::German,   "Physischer RAM-Heap" },
+            { ELanguage::French,   "RAM physique" },
+            { ELanguage::Spanish,  "RAM física" },
+            { ELanguage::Italian,  "RAM fisica" }
+        }
+    },
+    {
+        "SystemInfo_Resolution",
+        {
+            { ELanguage::English,  "Render" },
+            { ELanguage::Japanese, "描画" },
+            { ELanguage::German,   "Render" },
+            { ELanguage::French,   "Rendu" },
+            { ELanguage::Spanish,  "Render" },
+            { ELanguage::Italian,  "Render" }
+        }
+    },
+    {
+        "Options_Value_None",
+        {
+            { ELanguage::English,  "None (0)" },
+            { ELanguage::Japanese, "なし (0)" },
+            { ELanguage::German,   "Aus (0)" },
+            { ELanguage::French,   "Aucun (0)" },
+            { ELanguage::Spanish,  "Ninguno (0)" },
+            { ELanguage::Italian,  "Nessuno (0)" }
+        }
+    },
+    {
+        "SystemInfo_SoCSensor",
+        {
+            { ELanguage::English,  "SoC sensor" },
+            { ELanguage::Japanese, "SoCセンサー" },
+            { ELanguage::German,   "SoC-Sensor" },
+            { ELanguage::French,   "Capteur SoC" },
+            { ELanguage::Spanish,  "Sensor SoC" },
+            { ELanguage::Italian,  "Sensore SoC" }
+        }
+    },
+    {
+        "SystemInfo_UserDataPath",
+        {
+            { ELanguage::English,  "User data" },
+            { ELanguage::Japanese, "ユーザーデータ" },
+            { ELanguage::German,   "Benutzerdaten" },
+            { ELanguage::French,   "Données utilisateur" },
+            { ELanguage::Spanish,  "Datos de usuario" },
+            { ELanguage::Italian,  "Dati utente" }
+        }
+    },
+    {
+        "SystemInfo_ExecutablePath",
+        {
+            { ELanguage::English,  "Game executable" },
+            { ELanguage::Japanese, "ゲーム実行ファイル" },
+            { ELanguage::German,   "Spielexecutable" },
+            { ELanguage::French,   "Exécutable du jeu" },
+            { ELanguage::Spanish,  "Ejecutable del juego" },
+            { ELanguage::Italian,  "Eseguibile del gioco" }
+        }
+    },
+    {
+        "SystemInfo_GameMount",
+        {
+            { ELanguage::English,  "Game mount" },
+            { ELanguage::Japanese, "ゲームマウント" },
+            { ELanguage::German,   "Spiel-Mount" },
+            { ELanguage::French,   "Montage du jeu" },
+            { ELanguage::Spanish,  "Montaje del juego" },
+            { ELanguage::Italian,  "Mount del gioco" }
         }
     },
     {

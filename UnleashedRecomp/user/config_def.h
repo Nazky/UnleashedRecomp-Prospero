@@ -62,18 +62,39 @@ CONFIG_DEFINE_LOCALISED("Video", bool, VSync, true);
 CONFIG_DEFINE_ENUM("Video", ETripleBuffering, TripleBuffering, ETripleBuffering::Auto);
 CONFIG_DEFINE_LOCALISED("Video", int32_t, FPS, 60);
 CONFIG_DEFINE("Video", bool, ShowFPS, false);
+// Keep legacy RGB values loadable for the existing RGB-to-preset migration.
+CONFIG_DEFINE_HIDDEN("Video", int32_t, SystemInfoAccentRed, 0);
+CONFIG_DEFINE_HIDDEN("Video", int32_t, SystemInfoAccentGreen, 120);
+CONFIG_DEFINE_HIDDEN("Video", int32_t, SystemInfoAccentBlue, 247);
 CONFIG_DEFINE("Video", uint32_t, MaxFrameLatency, 2);
 CONFIG_DEFINE_LOCALISED("Video", float, Brightness, 0.5f);
 CONFIG_DEFINE_ENUM_LOCALISED("Video", EAntiAliasing, AntiAliasing, EAntiAliasing::MSAA8x);
 CONFIG_DEFINE_LOCALISED("Video", bool, TransparencyAntiAliasing, true);
-CONFIG_DEFINE("Video", uint32_t, AnisotropicFiltering, 16);
+CONFIG_DEFINE_LOCALISED("Video", uint32_t, AnisotropicFiltering, 16);
 CONFIG_DEFINE_ENUM_LOCALISED("Video", EShadowResolution, ShadowResolution, EShadowResolution::x8192);
 CONFIG_DEFINE_ENUM_LOCALISED("Video", EGITextureFiltering, GITextureFiltering, EGITextureFiltering::Bicubic);
-CONFIG_DEFINE_ENUM("Video", EDepthOfFieldQuality, DepthOfFieldQuality, EDepthOfFieldQuality::Auto);
+CONFIG_DEFINE_ENUM_LOCALISED("Video", EDepthOfFieldQuality, DepthOfFieldQuality, EDepthOfFieldQuality::Auto);
 CONFIG_DEFINE_ENUM_LOCALISED("Video", EMotionBlur, MotionBlur, EMotionBlur::Enhanced);
 CONFIG_DEFINE_LOCALISED("Video", bool, XboxColorCorrection, false);
 CONFIG_DEFINE_ENUM_LOCALISED("Video", ECutsceneAspectRatio, CutsceneAspectRatio, ECutsceneAspectRatio::Unlocked);
 CONFIG_DEFINE_ENUM_LOCALISED("Video", EUIAlignmentMode, UIAlignmentMode, EUIAlignmentMode::Edge);
+
+CONFIG_DEFINE_LOCALISED("Overlay", bool, ShowSystemInfo, false);
+CONFIG_DEFINE_ENUM_LOCALISED("Overlay", EOverlayDisplayMode, OverlayMode, EOverlayDisplayMode::Advanced);
+CONFIG_DEFINE_LOCALISED("Overlay", int32_t, SystemInfoAccentPreset, 0);
+CONFIG_DEFINE_LOCALISED("Overlay", bool, OverlayShowCPUUpdateTime, true);
+CONFIG_DEFINE_LOCALISED("Overlay", bool, OverlayShowGPUName, true);
+CONFIG_DEFINE_LOCALISED("Overlay", bool, OverlayShowGPUFrameTime, true);
+// Legacy temperature toggles remain hidden for config compatibility; readings are disabled.
+CONFIG_DEFINE_HIDDEN("Overlay", bool, OverlayShowCPUTemperature, false);
+CONFIG_DEFINE_HIDDEN("Overlay", bool, OverlayShowGPUTemperature, false);
+CONFIG_DEFINE_LOCALISED("Overlay", bool, OverlayShowSoCSensors, true);
+CONFIG_DEFINE_LOCALISED("Overlay", bool, OverlayShowGameHeap, true);
+CONFIG_DEFINE_LOCALISED("Overlay", bool, OverlayShowPhysicalHeap, true);
+CONFIG_DEFINE_LOCALISED("Overlay", bool, OverlayShowRenderResolution, true);
+CONFIG_DEFINE_LOCALISED("Overlay", bool, OverlayShowUserDataPath, true);
+CONFIG_DEFINE_LOCALISED("Overlay", bool, OverlayShowExecutablePath, true);
+CONFIG_DEFINE_LOCALISED("Overlay", bool, OverlayShowGameMount, true);
 
 CONFIG_DEFINE_HIDDEN("Codes", bool, AllowCancellingUnleash, false);
 CONFIG_DEFINE_HIDDEN("Codes", bool, DisableAutoSaveWarning, false);

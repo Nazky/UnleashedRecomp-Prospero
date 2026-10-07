@@ -161,6 +161,7 @@ set(UNLEASHED_RECOMP_UI_CXX_SOURCES
     "ui/options_menu.cpp"
     "ui/options_menu_thumbnails.cpp"
     "ui/tv_static.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../extras/SystemInfoOverlay/system_info_overlay.cpp"
 )
 
 set(UNLEASHED_RECOMP_INSTALL_CXX_SOURCES
@@ -244,6 +245,12 @@ set(UNLEASHED_RECOMP_CXX_SOURCES
     ${UNLEASHED_RECOMP_MOD_CXX_SOURCES}
     ${UNLEASHED_RECOMP_THIRDPARTY_SOURCES}
 )
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Prospero")
+    list(APPEND UNLEASHED_RECOMP_CXX_SOURCES
+        "ps5/elevation.cpp"
+    )
+endif()
 
 include("version.cmake")
 
@@ -406,6 +413,7 @@ target_link_libraries(UnleashedRecomp PRIVATE
 target_include_directories(UnleashedRecomp PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     "${CMAKE_CURRENT_SOURCE_DIR}/api"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../extras/SystemInfoOverlay"
     ${UNLEASHED_RECOMP_THIRDPARTY_INCLUDES}
 )
 

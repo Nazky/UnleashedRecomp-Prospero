@@ -97,6 +97,8 @@ enum class ETripleBuffering : uint32_t
 
 static constexpr int32_t FPS_MIN = 15;
 static constexpr int32_t FPS_MAX = 241;
+static constexpr int32_t FPS_PROSPERO_OPTIONS[] = { 30, 60, 90, 120 };
+static constexpr int32_t FPS_PROSPERO_OPTION_COUNT = 4;
 
 enum class EAntiAliasing : uint32_t
 {
@@ -148,6 +150,12 @@ enum class EUIAlignmentMode : uint32_t
 {
     Edge,
     Centre
+};
+
+enum class EOverlayDisplayMode : uint32_t
+{
+    Simple,
+    Advanced
 };
 
 template<typename T, bool isHidden = false>

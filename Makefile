@@ -6,7 +6,7 @@
 # FSELF signing, FTP deployment, and ps5-homebrew-dev-protocol launch/close targets.
 
 SHELL := /bin/bash
-.DEFAULT_GOAL := app
+.DEFAULT_GOAL := all
 
 -include .env
 
@@ -16,7 +16,7 @@ FTP_PORT ?= 2121
 PS5_ELF_PORT ?= 9021
 RESSOURCES_DIR ?= ressources
 
-.PHONY: all app build deps tools assets recomp deploy undeploy launch close clean
+.PHONY: all app build deps tools assets audio-test recomp deploy undeploy launch close clean
 
 all: app
 build: app
@@ -31,17 +31,20 @@ deps: tools
 tools:
 	@bash tools/build-host-tools.sh
 
-# Auto-convert sce_sys/pic0.png & pic1.png -> pic0.dds & pic1.dds, sce_sys/snd0.{wav,mp3,ogg,flac} -> snd0.at9, and validate sce_sys/
+# Auto-convert presentation assets with no additional music attenuation (0 dB).
 assets:
 	@bash tools/prepare-assets.sh
+
+audio-test:
+	@HOST_CC="$(CC)" HOST_CXX="$(CXX)" bash tools/tests/test_at9_gain.sh
 
 # Run XenonRecomp + x_decompress + XenosRecomp on ./ressources/{game,update,dlc}
 recomp:
 	@bash tools/recomp-xex.sh "$(RESSOURCES_DIR)"
 
-# Full PS5 build: auto-runs recomp if ./ressources/game is populated, compiles, links, and signs eboot.bin
-app:
-	@bash tools/build.sh
+# Full PS5 build: host ATRAC9-gain test, then auto-recomp/compile/link/package/sign.
+app: audio-test
+	@TITLE_ID="$(TITLE_ID)" bash tools/build.sh
 
 # Deploy dist/PPSA99902 to PS5 over FTP (/data/homebrew/PPSA99902)
 deploy: app

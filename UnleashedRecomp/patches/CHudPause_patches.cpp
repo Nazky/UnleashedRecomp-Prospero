@@ -7,6 +7,7 @@
 #include <ui/options_menu.h>
 #include <locale/locale.h>
 #include <app.h>
+#include <hid/hid.h>
 
 bool g_isClosed;
 static bool g_pauseRestartFaderBegun = false;
@@ -17,6 +18,13 @@ constexpr float g_achievementMenuIntroThreshold = 3.0f;
 float g_achievementMenuOutroTime = 0.0f;
 constexpr float g_achievementMenuOutroThreshold = 0.32f;
 bool g_isAchievementMenuOutro = false;
+
+static uint32_t GetPauseMenuCursorIndex(uint32_t pThis)
+{
+    const uint32_t cursorDataOffset = *(be<uint32_t>*)g_memory.Translate(pThis + 0x19C);
+    const uint32_t cursorIndexAddress = pThis + 4 * (cursorDataOffset + 0x68);
+    return *(be<uint32_t>*)g_memory.Translate(cursorIndexAddress);
+}
 
 void CHudPauseAddOptionsItemMidAsmHook(PPCRegister& pThis)
 {
@@ -32,7 +40,7 @@ bool InjectMenuBehaviour(uint32_t pThis, uint32_t count)
         return true;
 
     auto pHudPause = (SWA::CHudPause*)g_memory.Translate(pThis);
-    auto cursorIndex = *(be<uint32_t>*)g_memory.Translate(4 * (*(be<uint32_t>*)g_memory.Translate(pThis + 0x19C) + 0x68) + pThis);
+    auto cursorIndex = GetPauseMenuCursorIndex(pThis);
 
     auto actionType = SWA::eActionType_Undefined;
     auto transitionType = SWA::eTransitionType_Undefined;
@@ -129,7 +137,9 @@ PPC_FUNC(sub_824B0930)
         return;
     }
 
-    auto pHudPause = (SWA::CHudPause*)g_memory.Translate(ctx.r3.u32);
+    const uint32_t pHudPauseAddress = ctx.r3.u32;
+    auto pHudPause = (SWA::CHudPause*)g_memory.Translate(pHudPauseAddress);
+    const uint32_t cursorIndexBeforeUpdate = GetPauseMenuCursorIndex(pHudPauseAddress);
     auto pInputState = SWA::CInputState::GetInstance();
 
     g_achievementMenuIntroTime += App::s_deltaTime;
@@ -217,4 +227,7 @@ PPC_FUNC(sub_824B0930)
 
         __imp__sub_824B0930(ctx, base);
     }
+
+    if (GetPauseMenuCursorIndex(pHudPauseAddress) != cursorIndexBeforeUpdate)
+        hid::PulseMenuVibration();
 }

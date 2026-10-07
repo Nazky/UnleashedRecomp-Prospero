@@ -6,9 +6,40 @@
 #include <kernel/memory.h>
 #include <ui/game_window.h>
 #include <patches/inspire_patches.h>
+#include <hid/hid.h>
+#include <cstring>
 
 void Game_PlaySound(const char* pName)
 {
+    static constexpr const char* menuSounds[] =
+    {
+        "sys_actstg_pausecursor",
+        "sys_actstg_pausedecide",
+        "sys_actstg_pausecansel",
+        "sys_actstg_pausewinopen",
+        "sys_actstg_pausewinclose",
+        "sys_actstg_score",
+        "sys_actstg_stateserror",
+        "sys_actstg_twn_speechbutton",
+        "sys_worldmap_cursor",
+        "sys_worldmap_decide",
+        "sys_worldmap_finaldecide",
+        "sys_worldmap_cansel",
+        "sys_worldmap_window"
+    };
+
+    if (pName != nullptr)
+    {
+        for (const char* menuSound : menuSounds)
+        {
+            if (std::strcmp(pName, menuSound) == 0)
+            {
+                hid::PulseMenuVibration();
+                break;
+            }
+        }
+    }
+
     if (EmbeddedPlayer::s_isActive)
     {
         EmbeddedPlayer::Play(pName);
