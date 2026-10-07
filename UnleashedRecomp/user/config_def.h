@@ -13,6 +13,9 @@ CONFIG_DEFINE("System", bool, ShowConsole, false);
 CONFIG_DEFINE_ENUM_LOCALISED("Input", ECameraRotationMode, HorizontalCamera, ECameraRotationMode::Normal);
 CONFIG_DEFINE_ENUM_LOCALISED("Input", ECameraRotationMode, VerticalCamera, ECameraRotationMode::Normal);
 CONFIG_DEFINE_LOCALISED("Input", bool, Vibration, true);
+CONFIG_DEFINE_LOCALISED("Input", float, RumbleStrength, 1.0f);
+CONFIG_DEFINE_LOCALISED("Input", float, VibrationStrength, 1.0f);
+CONFIG_DEFINE_LOCALISED("Input", bool, VibrationMenu, true);
 CONFIG_DEFINE_LOCALISED("Input", bool, AllowBackgroundInput, false);
 CONFIG_DEFINE_ENUM_LOCALISED("Input", EControllerIcons, ControllerIcons, EControllerIcons::PlayStation);
 

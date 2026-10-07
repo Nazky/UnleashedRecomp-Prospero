@@ -195,7 +195,8 @@ GuestTexture* GetThumbnail(const IConfigDef* cfg)
         {
             texture = isPlayStation ? g_controlTutorialPSThumbnail.get() : g_controlTutorialXBThumbnail.get();
         }
-        else if (cfg == &Config::Vibration)
+        else if (cfg == &Config::Vibration || cfg == &Config::RumbleStrength ||
+                 cfg == &Config::VibrationStrength || cfg == &Config::VibrationMenu)
         {
             texture = isPlayStation ? g_vibrationPSThumbnail.get() : g_vibrationXBThumbnail.get();
         }

@@ -8,10 +8,10 @@
 #include <app.h>
 #include <chrono>
 #include <algorithm>
-#if defined(__PROSPERO__)
-#include <atomic>
 #include <cmath>
 #include <cstdint>
+#if defined(__PROSPERO__)
+#include <atomic>
 #include <mutex>
 #include <pthread.h>
 #include <unistd.h>
@@ -19,6 +19,23 @@
 
 static constexpr XAMINPUT_VIBRATION MENU_VIBRATION_PULSE{ 0x8000, 0x6000 };
 static constexpr Uint32 MENU_VIBRATION_DURATION_MS = 120;
+
+static uint16_t ScaleVibrationStrength(uint16_t strength, float multiplier)
+{
+    const float clampedMultiplier = std::clamp(multiplier, 0.0f, 1.0f);
+    const uint32_t scaled = static_cast<uint32_t>(static_cast<float>(strength) * clampedMultiplier + 0.5f);
+    return static_cast<uint16_t>(std::min(scaled, 65535u));
+}
+
+static XAMINPUT_VIBRATION ScaleVibrationByMultiplier(const XAMINPUT_VIBRATION& vibration, float configuredMultiplier)
+{
+    const float multiplier = std::clamp(
+        std::isfinite(configuredMultiplier) ? configuredMultiplier : 1.0f, 0.0f, 1.0f);
+    return {
+        ScaleVibrationStrength(vibration.wLeftMotorSpeed, multiplier),
+        ScaleVibrationStrength(vibration.wRightMotorSpeed, multiplier)
+    };
+}
 
 #if defined(__PROSPERO__)
 struct Ps5ScePadVibrationParam
@@ -67,6 +84,7 @@ static constexpr int32_t PS5_VIBRATION_MODE_COMPATIBLE = 2;
 static constexpr int32_t PS5_AUDIO_PORT_TYPE_VIBRATION = 10;
 static constexpr uint32_t PS5_HAPTIC_SAMPLE_RATE = 48000;
 static constexpr uint32_t PS5_HAPTIC_FRAMES_PER_OUTPUT = 256;
+static constexpr float PS5_BOOST_RUMBLE_MULTIPLIER = 2.0f;
 static constexpr uint32_t PS5_HAPTIC_FORMAT_S16_STEREO = 1;
 static constexpr uint32_t PS5_HAPTIC_FORMAT_F32_STEREO = 4;
 static constexpr uint32_t PS5_AUDIO_OUT_ALREADY_INITIALIZED = 0x8026000eu;
@@ -79,9 +97,16 @@ static std::atomic<bool> s_ps5HapticAudioActive{ false };
 static std::atomic<bool> s_ps5HapticThreadRunning{ false };
 static std::atomic<uint16_t> s_ps5HapticLargeLevel{ 0 };
 static std::atomic<uint16_t> s_ps5HapticSmallLevel{ 0 };
+static std::atomic<uint16_t> s_ps5HapticRouteLargeLevel{ 0 };
+static std::atomic<uint16_t> s_ps5HapticRouteSmallLevel{ 0 };
+static std::atomic<uint16_t> s_ps5RumbleFallbackLargeLevel{ 0 };
+static std::atomic<uint16_t> s_ps5RumbleFallbackSmallLevel{ 0 };
 static std::atomic<bool> s_ps5HapticRequestLogged{ false };
 static std::atomic<bool> s_ps5HapticOutputFailureLogged{ false };
 static std::mutex s_ps5HapticInitMutex;
+// Serializes compatible-mode transitions and scePadSetVibration calls against
+// asynchronous haptic-stream fallback in the worker thread.
+static std::mutex s_ps5PadVibrationMutex;
 static pthread_t s_ps5HapticThread{};
 static int32_t s_ps5HapticPort = -1;
 static bool s_ps5HapticFloat32Format;
@@ -97,15 +122,11 @@ static std::atomic<bool> s_ps5VibrationSuccessLogged{ false };
 static bool s_ps5PadOpenErrorLogged;
 static XAMINPUT_VIBRATION s_ps5GameVibration{};
 static bool s_ps5MenuVibrationActive;
+static bool s_ps5MenuVibrationStrengthOverrideActive;
+static float s_ps5MenuVibrationStrengthOverride = 1.0f;
 static std::chrono::steady_clock::time_point s_ps5MenuVibrationEnd;
 
-static uint16_t BoostPs5GameRumbleByFivePercent(uint16_t strength)
-{
-    const uint32_t boosted = (static_cast<uint32_t>(strength) * 105u + 50u) / 100u;
-    return static_cast<uint16_t>(std::min(boosted, 65535u));
-}
-
-static bool EnsurePs5CompatibleVibrationMode()
+static bool EnsurePs5CompatibleVibrationModeLocked()
 {
     if (s_ps5PadHandle < 0)
         return false;
@@ -127,6 +148,12 @@ static bool EnsurePs5CompatibleVibrationMode()
         s_ps5VibrationModeErrorLogged.store(false, std::memory_order_relaxed);
     }
     return ready;
+}
+
+static bool EnsurePs5CompatibleVibrationMode()
+{
+    std::lock_guard<std::mutex> lock(s_ps5PadVibrationMutex);
+    return EnsurePs5CompatibleVibrationModeLocked();
 }
 
 static float Ps5HapticNoise(uint32_t& rng)
@@ -200,27 +227,39 @@ static void* Ps5HapticAudioWorker(void*)
         {
             if (++outputFailures >= PS5_HAPTIC_OUTPUT_FAILURE_LIMIT)
             {
-                const int modeResult =
-                    scePadSetVibrationMode(s_ps5PadHandle, PS5_VIBRATION_MODE_COMPATIBLE);
-                const bool compatibleReady = modeResult == 0;
-                s_ps5CompatibleVibrationMode.store(compatibleReady, std::memory_order_release);
-                s_ps5HapticAudioActive.store(false, std::memory_order_release);
+                int modeResult = -1;
+                bool compatibleReady = false;
+                {
+                    // Keep mode change and the full two-motor state update
+                    // atomic with respect to game-thread vibration requests.
+                    std::lock_guard<std::mutex> vibrationLock(s_ps5PadVibrationMutex);
+                    modeResult = scePadSetVibrationMode(s_ps5PadHandle, PS5_VIBRATION_MODE_COMPATIBLE);
+                    compatibleReady = modeResult == 0;
+                    s_ps5CompatibleVibrationMode.store(compatibleReady, std::memory_order_release);
+                    s_ps5HapticAudioActive.store(false, std::memory_order_release);
 
-                if (compatibleReady)
-                {
-                    const Ps5ScePadVibrationParam levels{
-                        static_cast<uint8_t>(s_ps5HapticLargeLevel.load(std::memory_order_relaxed) >> 8),
-                        static_cast<uint8_t>(s_ps5HapticSmallLevel.load(std::memory_order_relaxed) >> 8),
-                    };
-                    const int vibrationResult = scePadSetVibration(s_ps5PadHandle, &levels);
-                    if (vibrationResult != 0)
-                        LOGFN_ERROR("scePadSetVibration fallback after haptic stream failure failed: {}",
-                                    vibrationResult);
-                }
-                else
-                {
-                    LOGFN_ERROR("scePadSetVibrationMode(handle={}, mode=2) fallback failed after haptic stream error: {}",
-                                s_ps5PadHandle, modeResult);
+                    if (compatibleReady)
+                    {
+                        const uint16_t fallbackLarge =
+                            s_ps5RumbleFallbackLargeLevel.load(std::memory_order_relaxed);
+                        const uint16_t fallbackSmall =
+                            s_ps5RumbleFallbackSmallLevel.load(std::memory_order_relaxed);
+                        s_ps5HapticLargeLevel.store(fallbackLarge, std::memory_order_relaxed);
+                        s_ps5HapticSmallLevel.store(fallbackSmall, std::memory_order_relaxed);
+                        const Ps5ScePadVibrationParam levels{
+                            static_cast<uint8_t>(fallbackLarge >> 8),
+                            static_cast<uint8_t>(fallbackSmall >> 8),
+                        };
+                        const int vibrationResult = scePadSetVibration(s_ps5PadHandle, &levels);
+                        if (vibrationResult != 0)
+                            LOGFN_ERROR("scePadSetVibration fallback after haptic stream failure failed: {}",
+                                        vibrationResult);
+                    }
+                    else
+                    {
+                        LOGFN_ERROR("scePadSetVibrationMode(handle={}, mode=2) fallback failed after haptic stream error: {}",
+                                    s_ps5PadHandle, modeResult);
+                    }
                 }
 
                 const int32_t failedPort = s_ps5HapticPort;
@@ -299,11 +338,31 @@ static bool TryStartPs5HapticAudio()
         return false;
     }
 
-    const int modeResult = scePadSetVibrationMode(s_ps5PadHandle, PS5_VIBRATION_MODE_ADVANCED);
+    int modeResult = -1;
+    {
+        std::lock_guard<std::mutex> vibrationLock(s_ps5PadVibrationMutex);
+        modeResult = scePadSetVibrationMode(s_ps5PadHandle, PS5_VIBRATION_MODE_ADVANCED);
+        if (modeResult == 0)
+        {
+            s_ps5HapticPort = port;
+            s_ps5HapticFloat32Format = float32Format;
+            s_ps5CompatibleVibrationMode.store(false, std::memory_order_release);
+            // Publish the advanced route while holding the same lock used by
+            // motor requests, so none can switch the pad back to mode 2.
+            s_ps5HapticAudioActive.store(true, std::memory_order_release);
+            s_ps5HapticLargeLevel.store(
+                s_ps5HapticRouteLargeLevel.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            s_ps5HapticSmallLevel.store(
+                s_ps5HapticRouteSmallLevel.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+        else
+        {
+            s_ps5CompatibleVibrationMode.store(false, std::memory_order_release);
+        }
+    }
     if (modeResult != 0)
     {
         (void)sceAudioOutClose(port);
-        s_ps5CompatibleVibrationMode.store(false, std::memory_order_release);
         (void)EnsurePs5CompatibleVibrationMode();
         if (!s_ps5HapticModeErrorLogged)
         {
@@ -314,29 +373,37 @@ static bool TryStartPs5HapticAudio()
         return false;
     }
 
-    s_ps5HapticPort = port;
-    s_ps5HapticFloat32Format = float32Format;
-    s_ps5CompatibleVibrationMode.store(false, std::memory_order_release);
-    s_ps5HapticAudioActive.store(true, std::memory_order_release);
     s_ps5HapticThreadRunning.store(true, std::memory_order_release);
     const int threadResult = pthread_create(&s_ps5HapticThread, nullptr, Ps5HapticAudioWorker, nullptr);
     if (threadResult != 0)
     {
         s_ps5HapticThreadRunning.store(false, std::memory_order_release);
-        const int fallbackResult = scePadSetVibrationMode(s_ps5PadHandle, PS5_VIBRATION_MODE_COMPATIBLE);
-        s_ps5CompatibleVibrationMode.store(fallbackResult == 0, std::memory_order_release);
-        s_ps5HapticAudioActive.store(false, std::memory_order_release);
-        if (fallbackResult == 0)
+        int fallbackResult = -1;
+        bool fallbackReady = false;
         {
-            const Ps5ScePadVibrationParam levels{
-                static_cast<uint8_t>(s_ps5HapticLargeLevel.load(std::memory_order_relaxed) >> 8),
-                static_cast<uint8_t>(s_ps5HapticSmallLevel.load(std::memory_order_relaxed) >> 8),
-            };
-            const int vibrationResult = scePadSetVibration(s_ps5PadHandle, &levels);
-            if (vibrationResult != 0)
-                LOGFN_ERROR("scePadSetVibration after haptic worker start failure failed: {}", vibrationResult);
+            std::lock_guard<std::mutex> vibrationLock(s_ps5PadVibrationMutex);
+            fallbackResult = scePadSetVibrationMode(s_ps5PadHandle, PS5_VIBRATION_MODE_COMPATIBLE);
+            fallbackReady = fallbackResult == 0;
+            s_ps5CompatibleVibrationMode.store(fallbackReady, std::memory_order_release);
+            s_ps5HapticAudioActive.store(false, std::memory_order_release);
+            if (fallbackReady)
+            {
+                const uint16_t fallbackLarge =
+                    s_ps5RumbleFallbackLargeLevel.load(std::memory_order_relaxed);
+                const uint16_t fallbackSmall =
+                    s_ps5RumbleFallbackSmallLevel.load(std::memory_order_relaxed);
+                s_ps5HapticLargeLevel.store(fallbackLarge, std::memory_order_relaxed);
+                s_ps5HapticSmallLevel.store(fallbackSmall, std::memory_order_relaxed);
+                const Ps5ScePadVibrationParam levels{
+                    static_cast<uint8_t>(fallbackLarge >> 8),
+                    static_cast<uint8_t>(fallbackSmall >> 8),
+                };
+                const int vibrationResult = scePadSetVibration(s_ps5PadHandle, &levels);
+                if (vibrationResult != 0)
+                    LOGFN_ERROR("scePadSetVibration after haptic worker start failure failed: {}", vibrationResult);
+            }
         }
-        else
+        if (!fallbackReady)
         {
             LOGFN_ERROR("scePadSetVibrationMode(handle={}, mode=2) fallback after worker start failure failed: {}",
                         s_ps5PadHandle, fallbackResult);
@@ -360,14 +427,25 @@ static bool TryStartPs5HapticAudio()
     return true;
 }
 
-static void SetPs5PadVibration(const XAMINPUT_VIBRATION& vibration)
+static void SetPs5PadVibration(
+    const XAMINPUT_VIBRATION& rumbleOutput,
+    const XAMINPUT_VIBRATION& hapticOutput)
 {
-    const uint16_t largeLevel = vibration.wLeftMotorSpeed;
-    const uint16_t smallLevel = vibration.wRightMotorSpeed;
+    std::lock_guard<std::mutex> vibrationLock(s_ps5PadVibrationMutex);
+
+    s_ps5RumbleFallbackLargeLevel.store(rumbleOutput.wLeftMotorSpeed, std::memory_order_relaxed);
+    s_ps5RumbleFallbackSmallLevel.store(rumbleOutput.wRightMotorSpeed, std::memory_order_relaxed);
+    s_ps5HapticRouteLargeLevel.store(hapticOutput.wLeftMotorSpeed, std::memory_order_relaxed);
+    s_ps5HapticRouteSmallLevel.store(hapticOutput.wRightMotorSpeed, std::memory_order_relaxed);
+
+    const bool hapticAudioActive = s_ps5HapticAudioActive.load(std::memory_order_acquire);
+    const XAMINPUT_VIBRATION output = hapticAudioActive ? hapticOutput : rumbleOutput;
+    const uint16_t largeLevel = output.wLeftMotorSpeed;
+    const uint16_t smallLevel = output.wRightMotorSpeed;
     s_ps5HapticLargeLevel.store(largeLevel, std::memory_order_relaxed);
     s_ps5HapticSmallLevel.store(smallLevel, std::memory_order_relaxed);
 
-    if (s_ps5HapticAudioActive.load(std::memory_order_acquire))
+    if (hapticAudioActive)
     {
         if ((largeLevel != 0 || smallLevel != 0) &&
             !s_ps5HapticRequestLogged.exchange(true, std::memory_order_relaxed))
@@ -377,7 +455,7 @@ static void SetPs5PadVibration(const XAMINPUT_VIBRATION& vibration)
         }
         return;
     }
-    if (!EnsurePs5CompatibleVibrationMode())
+    if (!EnsurePs5CompatibleVibrationModeLocked())
         return;
 
     // XInput left is low-frequency/strong rumble (large motor); right is
@@ -404,26 +482,57 @@ static void SetPs5PadVibration(const XAMINPUT_VIBRATION& vibration)
     }
 }
 
+static XAMINPUT_VIBRATION MaxVibrationLevels(
+    const XAMINPUT_VIBRATION& first,
+    const XAMINPUT_VIBRATION& second)
+{
+    return {
+        std::max(first.wLeftMotorSpeed, second.wLeftMotorSpeed),
+        std::max(first.wRightMotorSpeed, second.wRightMotorSpeed)
+    };
+}
+
 static void ApplyPs5PadVibration()
 {
-    XAMINPUT_VIBRATION output = s_ps5GameVibration;
-    output.wLeftMotorSpeed = BoostPs5GameRumbleByFivePercent(output.wLeftMotorSpeed);
-    output.wRightMotorSpeed = BoostPs5GameRumbleByFivePercent(output.wRightMotorSpeed);
+    XAMINPUT_VIBRATION menuPulse{ 0, 0 };
+    float menuRumbleMultiplier = Config::RumbleStrength.Value;
+    float menuHapticMultiplier = Config::VibrationStrength.Value;
     if (s_ps5MenuVibrationActive)
     {
         if (std::chrono::steady_clock::now() < s_ps5MenuVibrationEnd)
         {
-            // The 5% game gain is applied before this max, so the menu pulse's
-            // configured level remains unchanged unless game rumble is stronger.
-            output.wLeftMotorSpeed = std::max(output.wLeftMotorSpeed, MENU_VIBRATION_PULSE.wLeftMotorSpeed);
-            output.wRightMotorSpeed = std::max(output.wRightMotorSpeed, MENU_VIBRATION_PULSE.wRightMotorSpeed);
+            menuPulse = MENU_VIBRATION_PULSE;
+            if (s_ps5MenuVibrationStrengthOverrideActive)
+            {
+                menuRumbleMultiplier = s_ps5MenuVibrationStrengthOverride;
+                menuHapticMultiplier = s_ps5MenuVibrationStrengthOverride;
+            }
         }
         else
         {
             s_ps5MenuVibrationActive = false;
+            s_ps5MenuVibrationStrengthOverrideActive = false;
         }
     }
-    SetPs5PadVibration(output);
+
+    // PS5 game rumble uses the selected route slider directly. Boost doubles
+    // that configured gain, capped at full scale; menu pulses are not doubled.
+    const float boostMultiplier = hid::IsBoostRumbleActive()
+        ? PS5_BOOST_RUMBLE_MULTIPLIER
+        : 1.0f;
+    const XAMINPUT_VIBRATION rumbleGame = ScaleVibrationByMultiplier(
+        s_ps5GameVibration, Config::RumbleStrength.Value * boostMultiplier);
+    const XAMINPUT_VIBRATION rumbleMenu =
+        ScaleVibrationByMultiplier(menuPulse, menuRumbleMultiplier);
+    const XAMINPUT_VIBRATION rumbleOutput = MaxVibrationLevels(rumbleGame, rumbleMenu);
+
+    const XAMINPUT_VIBRATION hapticGame = ScaleVibrationByMultiplier(
+        s_ps5GameVibration, Config::VibrationStrength.Value * boostMultiplier);
+    const XAMINPUT_VIBRATION hapticMenu =
+        ScaleVibrationByMultiplier(menuPulse, menuHapticMultiplier);
+    const XAMINPUT_VIBRATION hapticOutput = MaxVibrationLevels(hapticGame, hapticMenu);
+
+    SetPs5PadVibration(rumbleOutput, hapticOutput);
 }
 
 static void UpdatePs5MenuVibration()
@@ -746,8 +855,11 @@ public:
             return;
 
         this->vibration = vibration;
+        const XAMINPUT_VIBRATION scaledVibration =
+            ScaleVibrationByMultiplier(vibration, Config::RumbleStrength.Value);
 
-        SDL_GameControllerRumble(controller, vibration.wLeftMotorSpeed, vibration.wRightMotorSpeed, VIBRATION_TIMEOUT_MS);
+        SDL_GameControllerRumble(controller, scaledVibration.wLeftMotorSpeed,
+            scaledVibration.wRightMotorSpeed, VIBRATION_TIMEOUT_MS);
     }
 
     void SetLED(const uint8_t r, const uint8_t g, const uint8_t b) const
@@ -767,9 +879,19 @@ static bool s_menuVibrationRouteLogged;
 static bool s_menuVibrationUnavailableLogged;
 #endif
 
-void hid::PulseMenuVibration()
+void hid::RefreshVibrationOutput()
 {
-    if (!Config::Vibration.Value)
+#if defined(__PROSPERO__)
+    // Recompute both the active route and the atomically cached motor fallback
+    // from the latest route strengths. The audio worker never reads Config data.
+    if (s_ps5PadHandle >= 0)
+        ApplyPs5PadVibration();
+#endif
+}
+
+static void SendMenuVibrationPulse(bool useStrengthOverride, float strengthOverride)
+{
+    if (!Config::Vibration.Value || !Config::VibrationMenu.Value)
     {
 #if defined(__PROSPERO__)
         if (!s_menuVibrationDisabledLogged)
@@ -782,14 +904,29 @@ void hid::PulseMenuVibration()
     }
 
     const auto now = std::chrono::steady_clock::now();
-    if (s_hasMenuVibrationTimestamp && now - s_lastMenuVibration < std::chrono::milliseconds(55))
+    const bool isOnCooldown = s_hasMenuVibrationTimestamp &&
+        now - s_lastMenuVibration < std::chrono::milliseconds(55);
+#if defined(__PROSPERO__)
+    if (isOnCooldown)
+    {
+        // Let a slider preview track the latest value without extending the pulse.
+        if (useStrengthOverride && s_ps5PadHandle >= 0 && s_ps5MenuVibrationActive)
+        {
+            s_ps5MenuVibrationStrengthOverrideActive = true;
+            s_ps5MenuVibrationStrengthOverride = strengthOverride;
+            ApplyPs5PadVibration();
+        }
         return;
+    }
+#else
+    if (isOnCooldown)
+        return;
+#endif
 
     s_lastMenuVibration = now;
     s_hasMenuVibrationTimestamp = true;
 
-    // A brief, low-intensity dual-motor pulse. The larger level/duration lets
-    // the motors spin up enough to be perceptible on a DualSense.
+    // A brief dual-motor pulse, also used to preview slider force.
     constexpr auto pulseDuration = std::chrono::milliseconds(MENU_VIBRATION_DURATION_MS);
 #if defined(__PROSPERO__)
     // Prefer the native scePad handle even if SDL classified the PS5 remote or
@@ -805,6 +942,8 @@ void hid::PulseMenuVibration()
         }
         s_ps5MenuVibrationActive = true;
         s_ps5MenuVibrationEnd = now + pulseDuration;
+        s_ps5MenuVibrationStrengthOverrideActive = useStrengthOverride;
+        s_ps5MenuVibrationStrengthOverride = strengthOverride;
         ApplyPs5PadVibration();
         return;
     }
@@ -812,9 +951,14 @@ void hid::PulseMenuVibration()
 
     if (g_activeController && g_activeController->controller)
     {
+        const float multiplier = useStrengthOverride
+            ? strengthOverride
+            : Config::RumbleStrength.Value;
+        const XAMINPUT_VIBRATION scaledMenuPulse =
+            ScaleVibrationByMultiplier(MENU_VIBRATION_PULSE, multiplier);
 #if defined(__PROSPERO__)
         const int result = SDL_GameControllerRumble(g_activeController->controller,
-            MENU_VIBRATION_PULSE.wLeftMotorSpeed, MENU_VIBRATION_PULSE.wRightMotorSpeed,
+            scaledMenuPulse.wLeftMotorSpeed, scaledMenuPulse.wRightMotorSpeed,
             static_cast<Uint32>(pulseDuration.count()));
         if (!s_menuVibrationRouteLogged)
         {
@@ -824,7 +968,7 @@ void hid::PulseMenuVibration()
         }
 #else
         SDL_GameControllerRumble(g_activeController->controller,
-            MENU_VIBRATION_PULSE.wLeftMotorSpeed, MENU_VIBRATION_PULSE.wRightMotorSpeed,
+            scaledMenuPulse.wLeftMotorSpeed, scaledMenuPulse.wRightMotorSpeed,
             static_cast<Uint32>(pulseDuration.count()));
 #endif
     }
@@ -835,6 +979,16 @@ void hid::PulseMenuVibration()
         s_menuVibrationUnavailableLogged = true;
     }
 #endif
+}
+
+void hid::PulseMenuVibration()
+{
+    SendMenuVibrationPulse(false, 1.0f);
+}
+
+void hid::PreviewVibrationStrength(float multiplier)
+{
+    SendMenuVibrationPulse(true, multiplier);
 }
 
 inline Controller* EnsureController(uint32_t dwUserIndex)

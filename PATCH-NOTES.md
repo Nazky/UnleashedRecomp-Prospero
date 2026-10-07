@@ -1,3 +1,18 @@
+# PS5 Controller Vibration Follow-up — 2026-10-07
+
+## Changes
+
+- Replaces the fixed PS5 5%/10% gains with the selected route slider: normal gameplay uses the slider directly, and game rumble doubles during Boost, capped at 100%. Boost doubling applies to both type-10 haptics and compatible-mode motor fallback, not to menu pulses or SDL/DS4 output.
+- Adds saved `Input.RumbleStrength` and `Input.VibrationStrength` sliders, both 0–100% and defaulting to 100%. Rumble Strength controls SDL and compatible-mode motor output; on PS5, Vibration Strength separately controls the advanced type-10 DualSense audio-haptics route. Menu pulses use the strength setting for their active route; with `Vibration Menu` on, adjusting either slider emits a brief preview pulse scaled by its selected percentage. The controls appear only while master `Vibration` is enabled.
+- Adds a saved `Input.VibrationMenu` toggle, defaulting to on. It appears below the strength sliders only while the master `Vibration` option is enabled, and gates menu/title/pause feedback and strength previews independently.
+- Retains the DualSense haptic path referenced by [PS5_RetroArch PR #6](https://github.com/mihawk-99/PS5_RetroArch/pull/6): type-10 `sceAudioOut` PCM haptics in advanced mode, compatible-mode `scePadSetVibration` fallback, and serialized fallback mode/motor writes.
+
+## Validation limits
+
+- Static route/UI/localization checks and a standalone C++17 strength/Boost-scaling harness passed. No PS5 SDK build or console verification was performed for this follow-up.
+
+---
+
 # PS5 In-Game Achievement Overlay & Home Screen Audio Update — v10
 
 This candidate aligns achievement feedback with the linked Prospero branch’s standard local in-game overlay and restores its native ATRAC9 conversion path without extra fixed gain or MP3-only attenuation.

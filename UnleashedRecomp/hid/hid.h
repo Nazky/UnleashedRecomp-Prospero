@@ -41,7 +41,11 @@ namespace hid
 
     uint32_t GetState(uint32_t dwUserIndex, XAMINPUT_STATE* pState);
     uint32_t SetState(uint32_t dwUserIndex, XAMINPUT_VIBRATION* pVibration);
+    void SetBoostRumbleActive(bool active);
+    bool IsBoostRumbleActive();
+    void RefreshVibrationOutput();
     void PulseMenuVibration();
+    void PreviewVibrationStrength(float multiplier);
     uint32_t GetCapabilities(uint32_t dwUserIndex, XAMINPUT_CAPABILITIES* pCaps);
 
     void SetProhibitedInputs(uint16_t wButtons = 0, bool leftStick = false, bool rightStick = false);

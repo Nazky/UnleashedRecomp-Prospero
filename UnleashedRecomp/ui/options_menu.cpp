@@ -759,6 +759,21 @@ static void DrawSelectionArrows(ImVec2 min, ImVec2 max, bool isLeftTapped, bool 
 }
 
 template<typename T>
+static void PulseConfigOptionVibration(ConfigDef<T>* config)
+{
+    if constexpr (std::is_same_v<T, float>)
+    {
+        if (config == &Config::RumbleStrength || config == &Config::VibrationStrength)
+        {
+            hid::PreviewVibrationStrength(config->Value);
+            return;
+        }
+    }
+
+    hid::PulseMenuVibration();
+}
+
+template<typename T>
 static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* config,
     bool isAccessible, std::string* inaccessibleReason = nullptr,
     T valueMin = T(0), T valueCenter = T(0.5), T valueMax = T(1), bool isSlider = true)
@@ -838,7 +853,7 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
                                 config->LockCallback(config);
 
                             Game_PlaySound("sys_worldmap_decide");
-                            hid::PulseMenuVibration();
+                            PulseConfigOptionVibration(config);
                         }
                         else
                         {
@@ -852,18 +867,27 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
                             }
 
                             Game_PlaySound("sys_worldmap_finaldecide");
-                            hid::PulseMenuVibration();
+                            PulseConfigOptionVibration(config);
                         }
                     }
                     else if (padState.IsTapped(SWA::eKeyState_B))
                     {
-                        // released lock, restore old value
+                        // Released lock: restore the old value and reapply it
+                        // after any live callbacks that ran during adjustment.
+                        const bool valueChanged = config->Value != s_oldValue;
                         config->Value = s_oldValue;
-
                         g_lockedOnOption = false;
 
+                        if (valueChanged)
+                        {
+                            if (config->Callback)
+                                config->Callback(config);
+                            if (config->ApplyCallback)
+                                config->ApplyCallback(config);
+                        }
+
                         Game_PlaySound("sys_worldmap_cansel");
-                        hid::PulseMenuVibration();
+                        PulseConfigOptionVibration(config);
                     }
 
                     lockedOnOption = g_lockedOnOption;
@@ -885,7 +909,7 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
                     }
 
                     Game_PlaySound("sys_worldmap_decide");
-                    hid::PulseMenuVibration();
+                    PulseConfigOptionVibration(config);
                 }
             }
             else
@@ -1235,11 +1259,25 @@ static void DrawConfigOption(int32_t rowIndex, float yOffset, ConfigDef<T>* conf
 
             bool isConfigValueInBounds = config->Value >= valueMin && config->Value <= valueMax;
 
-            if ((increment || decrement) && isConfigValueInBounds && isPlayIncrementSound)
+            if ((increment || decrement) && isConfigValueInBounds)
             {
-                g_lastIncrementSoundTime = time;
-                Game_PlaySound("sys_actstg_twn_speechbutton");
-                hid::PulseMenuVibration();
+                if (isPlayIncrementSound)
+                {
+                    g_lastIncrementSoundTime = time;
+                    Game_PlaySound("sys_actstg_twn_speechbutton");
+                }
+
+                if constexpr (std::is_same_v<T, float>)
+                {
+                    if (config == &Config::RumbleStrength || config == &Config::VibrationStrength)
+                        PulseConfigOptionVibration(config);
+                    else if (isPlayIncrementSound)
+                        hid::PulseMenuVibration();
+                }
+                else if (isPlayIncrementSound)
+                {
+                    hid::PulseMenuVibration();
+                }
             }
 
             config->Value = std::clamp(config->Value, valueMin, valueMax);
@@ -1389,6 +1427,14 @@ static void DrawConfigOptions()
             DrawConfigOption(rowCount++, yOffset, &Config::HorizontalCamera, true);
             DrawConfigOption(rowCount++, yOffset, &Config::VerticalCamera, true);
             DrawConfigOption(rowCount++, yOffset, &Config::Vibration, true);
+            if (Config::Vibration.Value)
+            {
+                DrawConfigOption(rowCount++, yOffset, &Config::RumbleStrength, true);
+#if defined(__PROSPERO__)
+                DrawConfigOption(rowCount++, yOffset, &Config::VibrationStrength, true);
+#endif
+                DrawConfigOption(rowCount++, yOffset, &Config::VibrationMenu, true);
+            }
 #if !defined(__PROSPERO__)
             DrawConfigOption(rowCount++, yOffset, &Config::AllowBackgroundInput, true);
 #endif

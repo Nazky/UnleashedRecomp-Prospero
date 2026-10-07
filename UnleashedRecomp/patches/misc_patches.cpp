@@ -3,6 +3,7 @@
 #include <user/achievement_manager.h>
 #include <user/persistent_storage_manager.h>
 #include <user/config.h>
+#include <hid/hid.h>
 #include <app.h>
 
 void AchievementManagerUnlockMidAsmHook(PPCRegister& id)
@@ -185,9 +186,14 @@ PPC_FUNC(sub_824C1E60)
 PPC_FUNC_IMPL(__imp__sub_82B4DB48);
 PPC_FUNC(sub_82B4DB48)
 {
-    if (Config::DisableBoostFilter && strcmp((const char*)(base + ctx.r4.u32), "boost") == 0)
+    const bool isBoostFilter = strcmp((const char*)(base + ctx.r4.u32), "boost") == 0;
+    if (isBoostFilter)
     {
-        ctx.f1.f64 = 0.0;
+        // This parameter tracks the game's Boost activation envelope (0 to 1).
+        // Use it to scope the PS5 rumble gain to Boost rather than all gameplay.
+        hid::SetBoostRumbleActive(ctx.f1.f64 > 0.0);
+        if (Config::DisableBoostFilter)
+            ctx.f1.f64 = 0.0;
     }
 
     __imp__sub_82B4DB48(ctx, base);

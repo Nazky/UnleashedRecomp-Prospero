@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <limits>
 #include <app.h>
+#include <hid/hid.h>
 #include <os/logger.h>
 #include <ui/game_window.h>
 #include <ui/system_info_palette.h>
@@ -821,6 +822,16 @@ void Config::CreateCallbacks()
     Config::ResolutionScale.Callback = [](ConfigDef<float>* def)
     {
         def->Value = std::clamp(def->Value, 0.25f, 2.0f);
+    };
+
+    Config::RumbleStrength.Callback = [](ConfigDef<float>*)
+    {
+        hid::RefreshVibrationOutput();
+    };
+
+    Config::VibrationStrength.Callback = [](ConfigDef<float>*)
+    {
+        hid::RefreshVibrationOutput();
     };
 }
 

@@ -359,6 +359,36 @@ CONFIG_DEFINE_LOCALE(Vibration)
     { ELanguage::Italian,  { "Vibrazione", "Attiva/disattiva la vibrazione del controller." } }
 };
 
+CONFIG_DEFINE_LOCALE(RumbleStrength)
+{
+    { ELanguage::English,  { "Rumble Strength", "Adjust motor-rumble strength from 0% to 100%. Used by SDL controllers and the PS5 compatible-mode fallback." } },
+    { ELanguage::Japanese, { "[ランブル:らんぶる]の[強さ:つよさ]", "モーターの[振動:しんどう]の[強さ:つよさ]を0%から100%で[調整:ちょうせい]します。SDLコントローラーとPS5の[互換:ごかん]モードで[使:つか]われます。" } },
+    { ELanguage::German,   { "Rumble-Stärke", "Legt die Stärke des Motor-Rumbles von 0 % bis 100 % fest. Für SDL-Controller und den PS5-Kompatibilitätsmodus." } },
+    { ELanguage::French,   { "Intensité du rumble", "Règle l’intensité du rumble de 0 à 100 %. Pour les manettes SDL et le mode compatible de la PS5." } },
+    { ELanguage::Spanish,  { "Intensidad del rumble", "Ajusta la intensidad del rumble del 0 % al 100 %. Para mandos SDL y el modo compatible de PS5." } },
+    { ELanguage::Italian,  { "Intensità del rumble", "Regola l’intensità del rumble dallo 0% al 100%. Per i controller SDL e la modalità compatibile PS5." } }
+};
+
+CONFIG_DEFINE_LOCALE(VibrationStrength)
+{
+    { ELanguage::English,  { "Vibration Strength", "Adjust DualSense audio-haptic strength from 0% to 100% when the advanced type-10 route is active." } },
+    { ELanguage::Japanese, { "DualSense[振動:しんどう]の[強さ:つよさ]", "DualSenseのオーディオ[振動:しんどう]の[強さ:つよさ]を0%から100%で[調整:ちょうせい]します。タイプ10の[高度:こうど]な[振動:しんどう]ルートで[使:つか]われます。" } },
+    { ELanguage::German,   { "DualSense-Haptikstärke", "Legt die Stärke der DualSense-Audiohaptik von 0 % bis 100 % fest. Wird mit der erweiterten Typ-10-Route verwendet." } },
+    { ELanguage::French,   { "Intensité haptique DualSense", "Règle l’intensité haptique audio DualSense de 0 à 100 % lorsque la voie avancée de type 10 est active." } },
+    { ELanguage::Spanish,  { "Intensidad háptica DualSense", "Ajusta la intensidad háptica de audio del DualSense del 0 % al 100 % cuando está activa la ruta avanzada tipo 10." } },
+    { ELanguage::Italian,  { "Intensità aptica DualSense", "Regola l’intensità aptica audio del DualSense dallo 0% al 100% quando è attivo il percorso avanzato di tipo 10." } }
+};
+
+CONFIG_DEFINE_LOCALE(VibrationMenu)
+{
+    { ELanguage::English,  { "Vibration Menu", "Toggle controller vibration in menus and strength previews." } },
+    { ELanguage::Japanese, { "[メニュー:めにゅー][振動:しんどう]", "[メニュー:めにゅー]と[強:つよ]さプレビューのコントローラー[振動:しんどう]を[切:き]り[替:か]えます。" } },
+    { ELanguage::German,   { "Menüvibration", "Schalte die Controllervibration in Menüs und bei Stärkevorschauen an oder aus." } },
+    { ELanguage::French,   { "Vibration des menus", "Active ou désactive les vibrations de la manette dans les menus et lors de l’aperçu de l’intensité." } },
+    { ELanguage::Spanish,  { "Vibración en menús", "Activa o desactiva la vibración del mando en los menús y al previsualizar la intensidad." } },
+    { ELanguage::Italian,  { "Vibrazione nei menu", "Attiva o disattiva la vibrazione del controller nei menu e nell’anteprima dell’intensità." } }
+};
+
 // Japanese Notes: This localization should include furigana.
 CONFIG_DEFINE_LOCALE(AllowBackgroundInput)
 {
