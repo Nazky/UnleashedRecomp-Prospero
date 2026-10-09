@@ -63,6 +63,7 @@ class ButtonGuide
 {
 public:
     static inline bool s_isVisible = false;
+    static inline bool s_isModsMenuPromptVisible = false;
 
     static void Init();
     static void Draw();

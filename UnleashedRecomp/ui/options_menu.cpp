@@ -15,6 +15,7 @@
 #include <patches/audio_patches.h>
 #include <ui/button_guide.h>
 #include <ui/game_window.h>
+#include <ui/message_window.h>
 #include <ui/imgui_utils.h>
 #include <ui/system_info_palette.h>
 #include <app.h>
@@ -63,8 +64,14 @@ static constexpr float PADDING_NARROW_GRID_COUNT = 1.0f;
 
 static constexpr float INFO_TEXT_MARQUEE_DELAY = 1.2f;
 
-static constexpr int32_t g_categoryCount = 5;
+static constexpr int32_t g_baseCategoryCount = 5;
+static constexpr int32_t g_maxCategoryCount = g_baseCategoryCount;
 static int32_t g_categoryIndex;
+
+static int32_t GetCategoryCount()
+{
+    return g_baseCategoryCount;
+}
 static ImVec2 g_categoryAnimMin;
 static ImVec2 g_categoryAnimMax;
 
@@ -456,6 +463,10 @@ static bool DrawCategories()
     if (motion == 0.0)
         return false;
 
+    const int32_t categoryCount = GetCategoryCount();
+    if (g_categoryIndex >= categoryCount)
+        g_categoryIndex = 0;
+
     auto inputState = SWA::CInputState::GetInstance();
 
     bool moveLeft = !g_lockedOnOption && inputState->GetPadState().IsTapped(SWA::eKeyState_LeftBumper);
@@ -465,12 +476,12 @@ static bool DrawCategories()
     {
         --g_categoryIndex;
         if (g_categoryIndex < 0)
-            g_categoryIndex = g_categoryCount - 1;
+            g_categoryIndex = categoryCount - 1;
     }
     else if (moveRight)
     {
         ++g_categoryIndex;
-        if (g_categoryIndex >= g_categoryCount)
+        if (g_categoryIndex >= categoryCount)
             g_categoryIndex = 0;
     }
 
@@ -488,35 +499,38 @@ static bool DrawCategories()
     float gridSize = Scale(GRID_SIZE);
 
     float size = Scale(32.0f);
-    ImVec2 textSizes[g_categoryCount];
-    float clipRectWidth = clipRectMax.x - clipRectMin.x;
+    ImVec2 textSizes[g_maxCategoryCount];
+    const float clipRectWidth = clipRectMax.x - clipRectMin.x;
 
     float textWidthSum = 0.0f;
-    for (size_t i = 0; i < g_categoryCount; i++)
+    for (int32_t i = 0; i < categoryCount; i++)
     {
         textSizes[i] = g_dfsogeistdFont->CalcTextSizeA(size, FLT_MAX, 0.0f, GetCategory(i).c_str());
         textWidthSum += textSizes[i].x;
     }
 
-    float textSquashRatio = 1.0f;
-    float maxTextWidthSum = clipRectWidth - (gridSize * 4.0f * (g_categoryCount - 1));
-    if (textWidthSum > maxTextWidthSum)
+    const float maxTextWidthSum = std::max(0.0f, clipRectWidth - (gridSize * 4.0f * (categoryCount - 1)));
+    if (textWidthSum > maxTextWidthSum && textWidthSum > 0.0f)
     {
-        textSquashRatio = maxTextWidthSum / textWidthSum;
-        for (auto& textSize : textSizes)
-            textSize.x *= textSquashRatio;
-
-        textWidthSum = maxTextWidthSum;
+        // Use a smaller font rather than squeezing glyphs horizontally. Leave a
+        // little safety room for outlines and locale-specific glyph metrics.
+        size *= (maxTextWidthSum / textWidthSum) * 0.96f;
+        textWidthSum = 0.0f;
+        for (int32_t i = 0; i < categoryCount; i++)
+        {
+            textSizes[i] = g_dfsogeistdFont->CalcTextSizeA(size, FLT_MAX, 0.0f, GetCategory(i).c_str());
+            textWidthSum += textSizes[i].x;
+        }
     }
 
     float tabHeight = gridSize * 4.0f;
-    float textPadding = (clipRectWidth - textWidthSum) / (g_categoryCount + 1.0f);
+    float textPadding = (clipRectWidth - textWidthSum) / (categoryCount + 1.0f);
     float xOffset = textPadding;
     xOffset -= (1.0 - motion) * gridSize * 4.0;
 
-    ImVec2 textPositions[g_categoryCount];
+    ImVec2 textPositions[g_maxCategoryCount];
 
-    for (size_t i = 0; i < g_categoryCount; i++)
+    for (int32_t i = 0; i < categoryCount; i++)
     {
         float tabPadding = std::min(textPadding / 2.0f, gridSize * 3.0f);
 
@@ -590,9 +604,9 @@ static bool DrawCategories()
         xOffset += textSizes[i].x + textPadding;
     }
 
-    SetScale({ textSquashRatio, 1.0f });
+    SetScale({ 1.0f, 1.0f });
 
-    for (size_t i = 0; i < g_categoryCount; i++)
+    for (int32_t i = 0; i < categoryCount; i++)
     {
         auto& pos = textPositions[i];
         uint8_t alpha = (i == g_categoryIndex ? 235 : 128) * motion;
@@ -2113,7 +2127,7 @@ void OptionsMenu::Open(bool isPause, SWA::EMenuType pauseMenuType)
     s_isPause = isPause;
     s_pauseMenuType = pauseMenuType;
     g_isStage = isPause && pauseMenuType != SWA::eMenuType_WorldMap;
-    
+
     g_appearTime = ImGui::GetTime();
     g_categoryIndex = 0;
     g_categoryAnimMin = { 0.0f, 0.0f };
@@ -2140,7 +2154,7 @@ void OptionsMenu::Open(bool isPause, SWA::EMenuType pauseMenuType)
         Button("Common_Select", 115.0f, EButtonIcon::A, &g_isControlsVisible),
         Button("Common_Back", 65.0f, EButtonIcon::B, &g_isControlsVisible)
     };
-    
+
     ButtonGuide::Open(buttons);
     ButtonGuide::SetSideMargins(250);
 

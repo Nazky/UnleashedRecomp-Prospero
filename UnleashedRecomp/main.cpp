@@ -239,8 +239,8 @@ int main(int argc, char *argv[])
     (void)sceSystemServiceHideSplashScreen();
 #endif
 
-    // Select the writable PS5 user-data directory, requesting filesystem access
-    // before Config::Load() and before any application workers are started.
+    // Select the fixed PS5 user-data directory before Config::Load(); do not
+    // probe its read/write permissions on Prospero.
     InitializeUserPath();
 
     os::process::CheckConsole();

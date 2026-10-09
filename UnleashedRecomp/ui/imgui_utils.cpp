@@ -228,11 +228,37 @@ void DrawTextBasic(const ImFont* font, float fontSize, const ImVec2& pos, ImU32 
 void DrawTextWithMarquee(const ImFont* font, float fontSize, const ImVec2& position, const ImVec2& min, const ImVec2& max, ImU32 color, const char* text, double time, double delay, double speed)
 {
     auto drawList = ImGui::GetBackgroundDrawList();
-    auto rectWidth = max.x - min.x;
-    auto textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0, text);
-    auto textX = position.x - fmodf(std::max(0.0, ImGui::GetTime() - (time + delay)) * speed, textSize.x + rectWidth);
+    const float availableWidth = std::max(0.0f, max.x - position.x);
+    const auto textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0, text);
 
+    // Marquee only overflowing text. Previously even short labels drifted out
+    // of their rows after the delay, leaving clipped fragments in the menu.
     drawList->PushClipRect(min, max, true);
+    if (textSize.x <= availableWidth)
+    {
+        DrawRubyAnnotatedText
+        (
+            font,
+            fontSize,
+            FLT_MAX,
+            position,
+            0.0f,
+            text,
+            [=](const char* str, ImVec2 pos)
+            {
+                DrawTextBasic(font, fontSize, pos, color, str);
+            },
+            [=](const char* str, float size, ImVec2 pos)
+            {
+                DrawTextBasic(font, size, pos, color, str);
+            }
+        );
+        drawList->PopClipRect();
+        return;
+    }
+
+    const float rectWidth = availableWidth;
+    const auto textX = position.x - fmodf(std::max(0.0, ImGui::GetTime() - (time + delay)) * speed, textSize.x + rectWidth);
 
     if (textX <= position.x)
     {
@@ -282,11 +308,21 @@ void DrawTextWithMarquee(const ImFont* font, float fontSize, const ImVec2& posit
 void DrawTextWithMarqueeShadow(const ImFont* font, float fontSize, const ImVec2& pos, const ImVec2& min, const ImVec2& max, ImU32 colour, const char* text, double time, double delay, double speed, float offset, float radius, ImU32 shadowColour)
 {
     auto drawList = ImGui::GetBackgroundDrawList();
-    auto rectWidth = max.x - min.x;
-    auto textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0, text);
-    auto textX = pos.x - fmodf(std::max(0.0, ImGui::GetTime() - (time + delay)) * speed, textSize.x + rectWidth);
+    const float availableWidth = std::max(0.0f, max.x - pos.x);
+    const auto textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0, text);
 
+    // Do not animate text that already fits; it should remain anchored in its
+    // row instead of scrolling away and showing only a fragment.
     drawList->PushClipRect(min, max, true);
+    if (textSize.x <= availableWidth)
+    {
+        DrawTextWithShadow(font, fontSize, pos, colour, text, offset, radius, shadowColour);
+        drawList->PopClipRect();
+        return;
+    }
+
+    const float rectWidth = availableWidth;
+    const auto textX = pos.x - fmodf(std::max(0.0, ImGui::GetTime() - (time + delay)) * speed, textSize.x + rectWidth);
 
     if (textX <= pos.x)
         DrawTextWithShadow(font, fontSize, { textX, pos.y }, colour, text, offset, radius, shadowColour);

@@ -33,6 +33,16 @@ inline bool IniFile::read(const std::filesystem::path& filePath)
     Section* section = nullptr;
     const char* dataPtr = data.get();
 
+    // UTF-8 BOMs are common in hand-edited INI files and should not prevent
+    // the first section header from being recognized.
+    if (dataSize >= 3 &&
+        static_cast<unsigned char>(dataPtr[0]) == 0xEF &&
+        static_cast<unsigned char>(dataPtr[1]) == 0xBB &&
+        static_cast<unsigned char>(dataPtr[2]) == 0xBF)
+    {
+        dataPtr += 3;
+    }
+
     while (dataPtr < data.get() + dataSize)
     {
         if (*dataPtr == ';')
@@ -62,7 +72,9 @@ inline bool IniFile::read(const std::filesystem::path& filePath)
                 return false;
 
             const char* endPtr;
-            if (*dataPtr == '"')
+            const char* keyEndPtr;
+            const bool isQuotedKey = *dataPtr == '"';
+            if (isQuotedKey)
             {
                 ++dataPtr;
                 endPtr = dataPtr;
@@ -72,24 +84,30 @@ inline bool IniFile::read(const std::filesystem::path& filePath)
 
                 if (*endPtr != '"')
                     return false;
+
+                keyEndPtr = endPtr;
+                ++endPtr; // Move past the closing quote before looking for '='.
             }
             else
             {
                 endPtr = dataPtr;
 
-                while (*endPtr != '\0' && !isNewLine(*endPtr) && !isWhitespace(*endPtr) && *endPtr != '=')
+                // INI keys may contain spaces (for example, HMM mod folder names).
+                // Read the whole key up to '=' and trim only its surrounding whitespace.
+                while (*endPtr != '\0' && !isNewLine(*endPtr) && *endPtr != '=')
                     ++endPtr;
 
-                if (!isNewLine(*endPtr) && !isWhitespace(*endPtr) && *endPtr != '=')
-                    return false;
+                keyEndPtr = endPtr;
+                while (keyEndPtr > dataPtr && isWhitespace(*(keyEndPtr - 1)))
+                    --keyEndPtr;
             }
 
-            std::string propertyName(dataPtr, endPtr - dataPtr);
+            std::string propertyName(dataPtr, keyEndPtr - dataPtr);
             auto& property = section->properties[hashStr(propertyName)];
             property.name = std::move(propertyName);
 
             dataPtr = endPtr;
-            while (*dataPtr != '\0' && !isNewLine(*dataPtr) && *dataPtr != '=')
+            while (*dataPtr != '\0' && !isNewLine(*dataPtr) && isWhitespace(*dataPtr))
                 ++dataPtr;
 
             if (*dataPtr == '=')
@@ -109,17 +127,25 @@ inline bool IniFile::read(const std::filesystem::path& filePath)
 
                     if (*endPtr != '"')
                         return false;
+
+                    property.value = std::string(dataPtr, endPtr - dataPtr);
+                    dataPtr = endPtr + 1;
                 }
                 else
                 {
                     endPtr = dataPtr;
 
-                    while (*endPtr != '\0' && !isNewLine(*endPtr) && !isWhitespace(*endPtr))
+                    // Unquoted INI values may also contain spaces, notably absolute paths.
+                    while (*endPtr != '\0' && !isNewLine(*endPtr))
                         ++endPtr;
-                }
 
-                property.value = std::string(dataPtr, endPtr - dataPtr);
-                dataPtr = endPtr + 1;
+                    const char* valueEndPtr = endPtr;
+                    while (valueEndPtr > dataPtr && isWhitespace(*(valueEndPtr - 1)))
+                        --valueEndPtr;
+
+                    property.value = std::string(dataPtr, valueEndPtr - dataPtr);
+                    dataPtr = endPtr;
+                }
             }
         }
         else

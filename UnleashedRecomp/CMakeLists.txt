@@ -158,6 +158,7 @@ set(UNLEASHED_RECOMP_UI_CXX_SOURCES
     "ui/imgui_utils.cpp"
     "ui/installer_wizard.cpp"
     "ui/message_window.cpp"
+    "ui/mods_menu.cpp"
     "ui/options_menu.cpp"
     "ui/options_menu_thumbnails.cpp"
     "ui/tv_static.cpp"

@@ -4,6 +4,8 @@
 #include <user/achievement_manager.h>
 #include <user/persistent_storage_manager.h>
 #include <user/config.h>
+#include <mod/mod_loader.h>
+#include <ui/button_guide.h>
 #include <app.h>
 
 static bool IsValidGuestPointer(uint32_t ptr)
@@ -67,6 +69,8 @@ PPC_FUNC(sub_824DCF38)
     auto pLoading = (SWA::CLoading*)g_memory.Translate(ctx.r3.u32);
 
     App::s_isLoading = true;
+    ButtonGuide::s_isModsMenuPromptVisible = false;
+    ModLoader::NotifyStartupLoadingStarted();
 
     if (ctx.r4.u32 == SWA::eLoadingDisplayType_WerehogMovie)
     {
@@ -128,7 +132,10 @@ PPC_FUNC(sub_824DAB60)
     __imp__sub_824DAB60(ctx, base);
 
     if (!pLoading->m_LoadingDisplayType)
+    {
         App::s_isLoading = false;
+        ModLoader::NotifyStartupLoadingFinished();
+    }
 }
 
 // Load voice language files.

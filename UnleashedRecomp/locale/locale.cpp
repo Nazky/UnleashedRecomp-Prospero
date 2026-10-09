@@ -1043,6 +1043,17 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
         }
     },
     {
+        "Common_OK",
+        {
+            { ELanguage::English,  "OK" },
+            { ELanguage::Japanese, "確認" },
+            { ELanguage::German,   "OK" },
+            { ELanguage::French,   "OK" },
+            { ELanguage::Spanish,  "Aceptar" },
+            { ELanguage::Italian,  "OK" }
+        }
+    },
+    {
         "Common_Next",
         {
             { ELanguage::English,  "Next" },
@@ -1117,6 +1128,237 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
             { ELanguage::French,   "Changer" },
             { ELanguage::Spanish,  "Cambiar" },
             { ELanguage::Italian,  "Cambia" }
+        }
+    },
+    {
+        "Mods_Header_Title",
+        {
+            { ELanguage::English,  "Mods" },
+            { ELanguage::Japanese, "Mods" },
+            { ELanguage::German,   "Mods" },
+            { ELanguage::French,   "Mods" },
+            { ELanguage::Spanish,  "Mods" },
+            { ELanguage::Italian,  "Mods" }
+        }
+    },
+    {
+        "Mods_Panel_List",
+        {
+            { ELanguage::English,  "Installed Mods" },
+            { ELanguage::Japanese, "インストール済みMOD" },
+            { ELanguage::German,   "Installierte Mods" },
+            { ELanguage::French,   "Mods installés" },
+            { ELanguage::Spanish,  "Mods instalados" },
+            { ELanguage::Italian,  "Mod installate" }
+        }
+    },
+    {
+        "Mods_Panel_Details",
+        {
+            { ELanguage::English,  "Mod Details" },
+            { ELanguage::Japanese, "MOD情報" },
+            { ELanguage::German,   "Mod-Details" },
+            { ELanguage::French,   "Détails du mod" },
+            { ELanguage::Spanish,  "Detalles del mod" },
+            { ELanguage::Italian,  "Dettagli mod" }
+        }
+    },
+    {
+        "Mods_Panel_Options",
+        {
+            { ELanguage::English,  "Mod Options" },
+            { ELanguage::Japanese, "MODオプション" },
+            { ELanguage::German,   "Mod-Optionen" },
+            { ELanguage::French,   "Options du mod" },
+            { ELanguage::Spanish,  "Opciones del mod" },
+            { ELanguage::Italian,  "Opzioni mod" }
+        }
+    },
+    {
+        "Mods_Empty",
+        {
+            { ELanguage::English,  "No valid mods were found." },
+            { ELanguage::Japanese, "有効なMODが見つかりません。" },
+            { ELanguage::German,   "Keine gültigen Mods gefunden." },
+            { ELanguage::French,   "Aucun mod valide n’a été trouvé." },
+            { ELanguage::Spanish,  "No se encontraron mods válidos." },
+            { ELanguage::Italian,  "Nessuna mod valida trovata." }
+        }
+    },
+    {
+        "Mods_SelectPrompt",
+        {
+            { ELanguage::English,  "Select a mod to see its details." },
+            { ELanguage::Japanese, "MODを選ぶと詳細が表示されます。" },
+            { ELanguage::German,   "Wähle einen Mod aus, um Details zu sehen." },
+            { ELanguage::French,   "Sélectionnez un mod pour voir ses détails." },
+            { ELanguage::Spanish,  "Selecciona un mod para ver sus detalles." },
+            { ELanguage::Italian,  "Seleziona una mod per vederne i dettagli." }
+        }
+    },
+    {
+        "Mods_Moving",
+        {
+            { ELanguage::English,  "MOVING" },
+            { ELanguage::Japanese, "移動中" },
+            { ELanguage::German,   "VERSCHIEBEN" },
+            { ELanguage::French,   "DÉPLACEMENT" },
+            { ELanguage::Spanish,  "MOVIENDO" },
+            { ELanguage::Italian,  "SPOSTAMENTO" }
+        }
+    },
+    {
+        "Mods_Button_Reorder",
+        {
+            { ELanguage::English,  "Grab" },
+            { ELanguage::Japanese, "つかむ" },
+            { ELanguage::German,   "Greifen" },
+            { ELanguage::French,   "Déplacer" },
+            { ELanguage::Spanish,  "Mover" },
+            { ELanguage::Italian,  "Sposta" }
+        }
+    },
+    {
+        "Mods_Button_Drop",
+        {
+            { ELanguage::English,  "Drop" },
+            { ELanguage::Japanese, "離す" },
+            { ELanguage::German,   "Ablegen" },
+            { ELanguage::French,   "Déposer" },
+            { ELanguage::Spanish,  "Soltar" },
+            { ELanguage::Italian,  "Rilascia" }
+        }
+    },
+    {
+        "Mods_Button_Options",
+        {
+            { ELanguage::English,  "Options" },
+            { ELanguage::Japanese, "オプション" },
+            { ELanguage::German,   "Optionen" },
+            { ELanguage::French,   "Options" },
+            { ELanguage::Spanish,  "Opciones" },
+            { ELanguage::Italian,  "Opzioni" }
+        }
+    },
+    {
+        "Mods_Button_Change",
+        {
+            { ELanguage::English,  "Change" },
+            { ELanguage::Japanese, "変更" },
+            { ELanguage::German,   "Ändern" },
+            { ELanguage::French,   "Modifier" },
+            { ELanguage::Spanish,  "Cambiar" },
+            { ELanguage::Italian,  "Cambia" }
+        }
+    },
+    {
+        "Mods_Button_Open",
+        {
+            { ELanguage::English,  "Mods Menu" },
+            { ELanguage::Japanese, "MODメニュー" },
+            { ELanguage::German,   "Mod-Menü" },
+            { ELanguage::French,   "Menu des mods" },
+            { ELanguage::Spanish,  "Menú de mods" },
+            { ELanguage::Italian,  "Menu mod" }
+        }
+    },
+    {
+        "Mods_NoOptions",
+        {
+            { ELanguage::English,  "This mod has no configurable options." },
+            { ELanguage::Japanese, "このMODに設定可能なオプションはありません。" },
+            { ELanguage::German,   "Dieser Mod bietet keine konfigurierbaren Optionen." },
+            { ELanguage::French,   "Ce mod ne propose aucune option configurable." },
+            { ELanguage::Spanish,  "Este mod no tiene opciones configurables." },
+            { ELanguage::Italian,  "Questa mod non ha opzioni configurabili." }
+        }
+    },
+    {
+        "Mods_OptionCount",
+        {
+            { ELanguage::English,  "Options" },
+            { ELanguage::Japanese, "オプション" },
+            { ELanguage::German,   "Optionen" },
+            { ELanguage::French,   "Options" },
+            { ELanguage::Spanish,  "Opciones" },
+            { ELanguage::Italian,  "Opzioni" }
+        }
+    },
+    {
+        "Mods_Author",
+        {
+            { ELanguage::English,  "By" },
+            { ELanguage::Japanese, "作者" },
+            { ELanguage::German,   "Von" },
+            { ELanguage::French,   "Par" },
+            { ELanguage::Spanish,  "Por" },
+            { ELanguage::Italian,  "Di" }
+        }
+    },
+    {
+        "Mods_Folder",
+        {
+            { ELanguage::English,  "Mods folder" },
+            { ELanguage::Japanese, "MODフォルダー" },
+            { ELanguage::German,   "Mods-Ordner" },
+            { ELanguage::French,   "Dossier des mods" },
+            { ELanguage::Spanish,  "Carpeta de mods" },
+            { ELanguage::Italian,  "Cartella mod" }
+        }
+    },
+    {
+        "Mods_Value_Stock",
+        {
+            { ELanguage::English,  "Stock" },
+            { ELanguage::Japanese, "標準" },
+            { ELanguage::German,   "Standard" },
+            { ELanguage::French,   "Par défaut" },
+            { ELanguage::Spanish,  "Original" },
+            { ELanguage::Italian,  "Predefinito" }
+        }
+    },
+    {
+        "Mods_Value_Custom",
+        {
+            { ELanguage::English,  "Custom:" },
+            { ELanguage::Japanese, "カスタム:" },
+            { ELanguage::German,   "Benutzerdefiniert:" },
+            { ELanguage::French,   "Personnalisé :" },
+            { ELanguage::Spanish,  "Personalizado:" },
+            { ELanguage::Italian,  "Personalizzato:" }
+        }
+    },
+    {
+        "Mods_UnsupportedOption",
+        {
+            { ELanguage::English,  "This option type cannot be changed here." },
+            { ELanguage::Japanese, "このオプション形式はここでは変更できません。" },
+            { ELanguage::German,   "Dieser Optionstyp kann hier nicht geändert werden." },
+            { ELanguage::French,   "Ce type d’option ne peut pas être modifié ici." },
+            { ELanguage::Spanish,  "Este tipo de opción no se puede cambiar aquí." },
+            { ELanguage::Italian,  "Questo tipo di opzione non può essere modificato qui." }
+        }
+    },
+    {
+        "Mods_Error_SaveFailed",
+        {
+            { ELanguage::English,  "Could not save mod settings. Check available storage and try again." },
+            { ELanguage::Japanese, "MOD設定を保存できません。空き容量を確認して再試行してください。" },
+            { ELanguage::German,   "Mod-Einstellungen konnten nicht gespeichert werden. Prüfe den Speicherplatz und versuche es erneut." },
+            { ELanguage::French,   "Impossible d’enregistrer les options du mod. Vérifiez l’espace disponible puis réessayez." },
+            { ELanguage::Spanish,  "No se pudo guardar la configuración del mod. Comprueba el espacio disponible e inténtalo de nuevo." },
+            { ELanguage::Italian,  "Impossibile salvare le impostazioni della mod. Controlla lo spazio disponibile e riprova." }
+        }
+    },
+    {
+        "Mods_DetectedStatus",
+        {
+            { ELanguage::English,  "Mods detected: {}." },
+            { ELanguage::Japanese, "{}件のMODを検出しました。" },
+            { ELanguage::German,   "{} Mods erkannt." },
+            { ELanguage::French,   "{} mods détectés." },
+            { ELanguage::Spanish,  "Se detectaron {} mods." },
+            { ELanguage::Italian,  "Rilevati {} mod." }
         }
     }
 };

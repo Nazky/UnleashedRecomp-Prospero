@@ -11,6 +11,8 @@
 #include <res/images/common/controller.dds.h>
 #include <res/images/common/kbm.dds.h>
 
+#include <algorithm>
+
 constexpr float DEFAULT_SIDE_MARGINS = 379;
 
 ImFont* g_fntNewRodin;
@@ -224,79 +226,107 @@ void ButtonGuide::Init()
 
 void ButtonGuide::Draw()
 {
-    if (!s_isVisible)
-        return;
+    // The title-menu shortcut is a one-screen overlay; the title update hook
+    // stops running during transitions, so clear any stale prompt as loading begins.
+    if (App::s_isLoading)
+        s_isModsMenuPromptVisible = false;
 
-    auto drawList = ImGui::GetBackgroundDrawList();
-    auto& res = ImGui::GetIO().DisplaySize;
+    if (!s_isVisible && !s_isModsMenuPromptVisible)
+        return;
 
     ImVec2 regionMin = { g_aspectRatioOffsetX + Scale(g_sideMargins), g_aspectRatioOffsetY * 2.0f + Scale(720.0f - 102.0f) };
     ImVec2 regionMax = { g_aspectRatioOffsetX + Scale(1280.0f - g_sideMargins), g_aspectRatioOffsetY * 2.0f + Scale(720.0f) };
 
-    auto textMarginX = Scale(21.25f);
-    auto iconMarginX = Scale(4);
-    auto fontSize = Scale(21.8f);
+    const float textMarginX = Scale(21.25f);
+    const float iconMarginX = Scale(4.0f);
+    const float fontSize = Scale(21.8f);
 
-    auto offsetLeft = 0.0f;
-    auto offsetRight = 0.0f;
-
-    // Draw left aligned icons.
-    for (int i = 0; i < g_buttons.size(); i++)
+    if (s_isVisible)
     {
-        auto& btn = g_buttons[i];
+        float offsetLeft = 0.0f;
+        float offsetRight = 0.0f;
 
-        if (btn.Alignment != EButtonAlignment::Left)
-            continue;
+        // Draw left aligned icons.
+        for (int i = 0; i < g_buttons.size(); i++)
+        {
+            auto& btn = g_buttons[i];
 
-        if (btn.Visibility && !*btn.Visibility)
-            continue;
+            if (btn.Alignment != EButtonAlignment::Left)
+                continue;
 
-        auto str = Localise(btn.Name).c_str();
-        auto iconWidth = Scale(g_iconWidths[btn.Icon]);
-        auto iconHeight = Scale(g_iconHeights[btn.Icon]);
-        auto textWidth = g_fntNewRodin->CalcTextSizeA(fontSize, FLT_MAX, 0, str).x;
-        auto maxWidth = btn.MaxWidth == FLT_MAX ? textWidth : Scale(btn.MaxWidth);
-        auto textScale = std::min(1.0f, maxWidth / textWidth);
+            if (btn.Visibility && !*btn.Visibility)
+                continue;
 
-        if (i > 0)
-            offsetLeft += maxWidth + iconWidth + textMarginX;
+            const char* text = Localise(btn.Name).c_str();
+            const float iconWidth = Scale(g_iconWidths[btn.Icon]);
+            const float iconHeight = Scale(g_iconHeights[btn.Icon]);
+            const float textWidth = g_fntNewRodin->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, text).x;
+            const float maxWidth = btn.MaxWidth == FLT_MAX ? textWidth : Scale(btn.MaxWidth);
+            const float textScale = std::min(1.0f, maxWidth / textWidth);
 
-        ImVec2 iconMin = { regionMin.x + offsetLeft - iconWidth - iconMarginX, regionMin.y };
-        ImVec2 iconMax = { regionMin.x + offsetLeft - iconMarginX, regionMin.y + iconHeight };
+            if (i > 0)
+                offsetLeft += maxWidth + iconWidth + textMarginX;
 
-        DrawGuide(&offsetLeft, regionMin, regionMax, btn.Icon, btn.Alignment, iconMin, iconMax, btn.FontQuality, textWidth, maxWidth, textScale, fontSize, str);
+            ImVec2 iconMin = { regionMin.x + offsetLeft - iconWidth - iconMarginX, regionMin.y };
+            ImVec2 iconMax = { regionMin.x + offsetLeft - iconMarginX, regionMin.y + iconHeight };
+
+            DrawGuide(&offsetLeft, regionMin, regionMax, btn.Icon, btn.Alignment,
+                iconMin, iconMax, btn.FontQuality, textWidth, maxWidth, textScale, fontSize, text);
+        }
+
+        // Draw right aligned icons.
+        for (int i = static_cast<int>(g_buttons.size()) - 1; i >= 0; i--)
+        {
+            auto& btn = g_buttons[i];
+
+            if (btn.Alignment != EButtonAlignment::Right)
+                continue;
+
+            if (btn.Visibility && !*btn.Visibility)
+                continue;
+
+            const char* text = Localise(btn.Name).c_str();
+            const float iconWidth = Scale(g_iconWidths[btn.Icon]);
+            const float iconHeight = Scale(g_iconHeights[btn.Icon]);
+            const float textWidth = g_fntNewRodin->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, text).x;
+            const float maxWidth = btn.MaxWidth == FLT_MAX ? textWidth : Scale(btn.MaxWidth);
+            const float textScale = std::min(1.0f, maxWidth / textWidth);
+
+            if (i < static_cast<int>(g_buttons.size()) - 1)
+                offsetRight += maxWidth + iconWidth + textMarginX;
+
+            ImVec2 iconMin = { regionMax.x - offsetRight - iconWidth - iconMarginX, regionMin.y };
+            ImVec2 iconMax = { regionMax.x - offsetRight - iconMarginX, regionMin.y + iconHeight };
+
+            DrawGuide(&offsetRight, regionMin, regionMax, btn.Icon, btn.Alignment,
+                iconMin, iconMax, btn.FontQuality, textWidth, maxWidth, textScale, fontSize, text);
+        }
     }
 
-    // Draw right aligned icons.
-    for (int i = g_buttons.size() - 1; i >= 0; i--)
+    if (s_isModsMenuPromptVisible)
     {
-        auto& btn = g_buttons[i];
+        const ImVec2 promptRegionMin = { g_aspectRatioOffsetX + Scale(DEFAULT_SIDE_MARGINS), regionMin.y };
+        const ImVec2 promptRegionMax = { g_aspectRatioOffsetX + Scale(1280.0f - DEFAULT_SIDE_MARGINS), regionMax.y };
+        const char* promptText = Localise("Mods_Button_Open").c_str();
+        const float iconWidth = Scale(g_iconWidths[EButtonIcon::X]);
+        const float iconHeight = Scale(g_iconHeights[EButtonIcon::X]);
+        const float textWidth = g_fntNewRodin->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, promptText).x;
+        const float maxTextWidth = Scale(180.0f);
+        const float textScale = std::min(1.0f, maxTextWidth / std::max(textWidth, 1.0f));
+        float offset = 0.0f;
 
-        if (btn.Alignment != EButtonAlignment::Right)
-            continue;
-
-        if (btn.Visibility && !*btn.Visibility)
-            continue;
-
-        auto str = Localise(btn.Name).c_str();
-        auto iconWidth = Scale(g_iconWidths[btn.Icon]);
-        auto iconHeight = Scale(g_iconHeights[btn.Icon]);
-        auto textWidth = g_fntNewRodin->CalcTextSizeA(fontSize, FLT_MAX, 0, str).x;
-        auto maxWidth = btn.MaxWidth == FLT_MAX ? textWidth : Scale(btn.MaxWidth);
-        auto textScale = std::min(1.0f, maxWidth / textWidth);
-
-        if (i < g_buttons.size() - 1)
-            offsetRight += maxWidth + iconWidth + textMarginX;
-
-        ImVec2 iconMin = { regionMax.x - offsetRight - iconWidth - iconMarginX, regionMin.y };
-        ImVec2 iconMax = { regionMax.x - offsetRight - iconMarginX, regionMin.y + iconHeight };
-
-        DrawGuide(&offsetRight, regionMin, regionMax, btn.Icon, btn.Alignment, iconMin, iconMax, btn.FontQuality, textWidth, maxWidth, textScale, fontSize, str);
+        // Keep the shortcut at the bottom-left safe margin, with the controller icon before the label.
+        // The shared X glyph resolves to Xbox X or PlayStation Square per the configured/automatic icon set.
+        ImVec2 iconMin = { promptRegionMin.x - iconWidth - iconMarginX, promptRegionMin.y };
+        ImVec2 iconMax = { promptRegionMin.x - iconMarginX, promptRegionMin.y + iconHeight };
+        DrawGuide(&offset, promptRegionMin, promptRegionMax, EButtonIcon::X, EButtonAlignment::Left,
+            iconMin, iconMax, EFontQuality::High, textWidth, maxTextWidth, textScale, fontSize, promptText);
     }
 }
 
 void ButtonGuide::Open(Button button)
 {
+    s_isModsMenuPromptVisible = false;
     s_isVisible = true;
     g_sideMargins = DEFAULT_SIDE_MARGINS;
 
@@ -306,6 +336,7 @@ void ButtonGuide::Open(Button button)
 
 void ButtonGuide::Open(const std::span<Button> buttons)
 {
+    s_isModsMenuPromptVisible = false;
     s_isVisible = true;
     g_sideMargins = DEFAULT_SIDE_MARGINS;
     g_buttons = std::vector(buttons.begin(), buttons.end());

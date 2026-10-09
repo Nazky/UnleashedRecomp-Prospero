@@ -24,12 +24,14 @@
 #include <ui/imgui_utils.h>
 #include <ui/installer_wizard.h>
 #include <ui/message_window.h>
+#include <ui/mods_menu.h>
 #include <ui/options_menu.h>
 #include <ui/game_window.h>
 #include <ui/system_info_palette.h>
 #include <ui/black_bar.h>
 #include <patches/aspect_ratio_patches.h>
 #include <user/config.h>
+#include <mod/mod_loader.h>
 #include <sdl_listener.h>
 #include <xxHashMap.h>
 #include <os/process.h>
@@ -1412,6 +1414,7 @@ static void CreateImGuiBackend()
     ButtonGuide::Init();
     MessageWindow::Init();
     OptionsMenu::Init();
+    ModsMenu::Init();
     InstallerWizard::Init();
 
     ImGui_ImplSDL2_InitForOther(GameWindow::s_pWindow);
@@ -2816,6 +2819,43 @@ static void DrawFPS()
     drawList->AddText(font, fontSize, textPos, IM_COL32_WHITE, fpsText.c_str());
 }
 
+static void DrawModStartupStatus()
+{
+    if (!ModLoader::s_showStartupStatus.load(std::memory_order_acquire))
+        return;
+
+    const uint32_t detectedModCount = ModLoader::s_detectedModCount.load(std::memory_order_acquire);
+    if (detectedModCount == 0)
+        return;
+
+    std::string message = Localise("Mods_DetectedStatus");
+    const size_t placeholder = message.find("{}");
+    if (placeholder != std::string::npos)
+    {
+        const std::string count = std::to_string(detectedModCount);
+        message.replace(placeholder, 2, count);
+    }
+
+    ImFont* font = ImFontAtlasSnapshot::GetFont("FOT-SeuratPro-M.otf");
+    const float fontSize = Scale(11);
+    const ImVec2 textSize = font->CalcTextSizeA(fontSize, FLT_MAX, 0, message.c_str());
+    const float paddingX = Scale(18);
+    const float paddingY = Scale(10);
+    const float panelWidth = std::max(Scale(220), textSize.x + paddingX * 2.0f);
+    const float panelHeight = textSize.y + paddingY * 2.0f;
+    const ImVec2 panelMin = {
+        (float(Video::s_viewportWidth) - panelWidth) * 0.5f,
+        std::max(Scale(12), float(Video::s_viewportHeight) - panelHeight - Scale(34))
+    };
+    const ImVec2 panelMax = { panelMin.x + panelWidth, panelMin.y + panelHeight };
+    const ImVec2 textPos = { panelMin.x + (panelWidth - textSize.x) * 0.5f, panelMin.y + paddingY };
+
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    drawList->AddRectFilled(panelMin, panelMax, IM_COL32(8, 11, 18, 232), Scale(5));
+    drawList->AddRect(panelMin, panelMax, IM_COL32(244, 190, 70, 235), Scale(5), 0, Scale(1));
+    drawList->AddText(font, fontSize, textPos, IM_COL32(255, 255, 255, 255), message.c_str());
+}
+
 static void DrawImGui()
 {
 #if defined(__PROSPERO__)
@@ -2877,6 +2917,7 @@ static void DrawImGui()
 
     AchievementMenu::Draw();
     OptionsMenu::Draw();
+    ModsMenu::Draw();
     AchievementOverlay::Draw();
     InstallerWizard::Draw();
     MessageWindow::Draw();
@@ -2889,6 +2930,7 @@ static void DrawImGui()
     DrawSystemInfo();
     DrawFPS();
     DrawProfiler();
+    DrawModStartupStatus();
     ImGui::Render();
 
     auto drawData = ImGui::GetDrawData();

@@ -6,12 +6,9 @@
 #include <fstream>
 
 #if defined(__PROSPERO__)
-#include <ps5/elevation.hpp>
 #include <array>
-#include <cerrno>
 #include <cstdio>
 #include <fcntl.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -21,41 +18,6 @@ std::filesystem::path g_userPath = BuildUserPath();
 #if defined(__PROSPERO__)
 namespace
 {
-bool EnsureWritableDirectory(const std::filesystem::path& directory)
-{
-    if (directory.empty())
-        return false;
-
-    const std::string directoryString = directory.string();
-    if (mkdir(directoryString.c_str(), 0777) != 0 && errno != EEXIST)
-        return false;
-
-    struct stat directoryStat{};
-    if (stat(directoryString.c_str(), &directoryStat) != 0 || !S_ISDIR(directoryStat.st_mode))
-        return false;
-
-    const std::string prefix = directoryString + "/.unleashed-write-probe-" + std::to_string(getpid());
-    for (unsigned attempt = 0; attempt < 8; ++attempt)
-    {
-        const std::string probePath = prefix + "-" + std::to_string(attempt);
-        const int descriptor = open(probePath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
-        if (descriptor < 0)
-        {
-            if (errno == EEXIST)
-                continue;
-            return false;
-        }
-
-        constexpr char probeData = 'U';
-        const bool wroteData = write(descriptor, &probeData, sizeof(probeData)) == sizeof(probeData);
-        const bool closed = close(descriptor) == 0;
-        const bool removed = unlink(probePath.c_str()) == 0;
-        return wroteData && closed && removed;
-    }
-
-    return false;
-}
-
 bool CopyFileIfMissing(const std::filesystem::path& source, const std::filesystem::path& destination,
                        bool& hadError, unsigned& copied)
 {
@@ -281,8 +243,9 @@ std::filesystem::path BuildUserPath()
 
     CoTaskMemFree(knownPath);
 #elif defined(__PROSPERO__)
-    const std::filesystem::path dataPath = std::filesystem::path("/data") / USER_DIRECTORY;
-    userPath = EnsureWritableDirectory(dataPath) ? dataPath : g_executableRoot;
+    // Jailbroken PS5 builds use this fixed per-user path. Do not probe it for
+    // read/write access; the Prospero permission probe can falsely fail.
+    userPath = std::filesystem::path("/data") / USER_DIRECTORY;
 #elif defined(__linux__) || defined(__APPLE__)
     const char* homeDir = getenv("HOME");
 #if defined(__linux__)
@@ -323,24 +286,8 @@ void InitializeUserPath()
     }
 
     const std::filesystem::path dataPath = std::filesystem::path("/data") / USER_DIRECTORY;
-    if (!EnsureWritableDirectory(dataPath))
-    {
-        const elevation::Status status = elevation::request(elevation::Capability::filesystem);
-        if (status == elevation::Status::ok && EnsureWritableDirectory(dataPath))
-        {
-            g_userPath = dataPath;
-            const unsigned migrated = MigrateLegacyUserData(dataPath);
-            std::fprintf(stderr, "[UnleashedRecomp] User data path: %s (Lapy: %s; migrated: %u)\n",
-                         g_userPath.string().c_str(), elevation::path(), migrated);
-            return;
-        }
-
-        g_userPath = g_executableRoot;
-        std::fprintf(stderr, "[UnleashedRecomp] /data unavailable (Lapy status %u, path %s); using executable root %s\n",
-                     static_cast<unsigned>(status), elevation::path(), g_userPath.string().c_str());
-        return;
-    }
-
+    // Keep PS5 user data on the documented path. Do not perform an access
+    // probe or fall back to the executable root on permission-status errors.
     g_userPath = dataPath;
     const unsigned migrated = MigrateLegacyUserData(dataPath);
     std::fprintf(stderr, "[UnleashedRecomp] User data path: %s (migrated: %u)\n",

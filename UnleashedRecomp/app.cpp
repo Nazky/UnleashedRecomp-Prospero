@@ -3,6 +3,7 @@
 #include <gpu/video.h>
 #include <install/installer.h>
 #include <kernel/function.h>
+#include <mod/mod_loader.h>
 #include <os/process.h>
 #include <patches/audio_patches.h>
 #include <patches/inspire_patches.h>
@@ -42,6 +43,9 @@ void App::Restart(std::vector<std::string> restartArgs)
 {
 #if defined(__PROSPERO__)
     (void)restartArgs;
+    // Soft reboot keeps this process alive, so refresh the virtual mod overlay
+    // from the just-committed ModsDB.ini and mod.ini values first.
+    ModLoader::Init();
     s_language = Config::Language;
     NotifyLanguageChanged();
     Config::Save();
