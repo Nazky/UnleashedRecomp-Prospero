@@ -30,7 +30,7 @@
 > [!WARNING]
 > **Unofficial PlayStation 5 Fork — Not Intended for Upstream Merge**
 >
-> **UnleashedRecomp-Prospero** ([`Nazky/UnleashedRecomp-Prospero`](https://github.com/Nazky/UnleashedRecomp-Prospero), branch `prospero`) is an independent, community-maintained fork created specifically to port *Unleashed Recompiled* to the **PlayStation 5.
+> **UnleashedRecomp-Prospero** ([`Nazky/UnleashedRecomp-Prospero`](https://github.com/Nazky/UnleashedRecomp-Prospero), branch `prospero`) is an independent, community-maintained fork created specifically to port *Unleashed Recompiled* to the **PlayStation 5**.
 >
 > - **This repository is NOT meant to be merged into the official [hedge-dev/UnleashedRecomp](https://github.com/hedge-dev/UnleashedRecomp) project.**
 > - **Do NOT report issues, crashes, or support requests from this PlayStation 5 fork to the official `hedge-dev/UnleashedRecomp` repository.**
