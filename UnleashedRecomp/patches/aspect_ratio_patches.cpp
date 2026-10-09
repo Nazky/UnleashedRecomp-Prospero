@@ -3,6 +3,7 @@
 #include <app.h>
 #include <ui/game_window.h>
 #include <ui/black_bar.h>
+#include <ui/button_guide.h>
 #include <gpu/video.h>
 #include <xxHashMap.h>
 
@@ -258,6 +259,9 @@ PPC_FUNC(sub_8258B558)
 {
     auto r3 = ctx.r3;
     __imp__sub_8258B558(ctx, base);
+
+    // The Mods shortcut belongs to the title menu only; don't leave its prompt on the world map after Continue.
+    ButtonGuide::s_isModsMenuPromptVisible = false;
 
     uint32_t worldMapSimpleInfo = PPC_LOAD_U32(r3.u32 + 0x70);
     if (worldMapSimpleInfo != NULL)

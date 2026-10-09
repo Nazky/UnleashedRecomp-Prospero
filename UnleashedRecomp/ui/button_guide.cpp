@@ -305,20 +305,26 @@ void ButtonGuide::Draw()
 
     if (s_isModsMenuPromptVisible)
     {
-        const ImVec2 promptRegionMin = { g_aspectRatioOffsetX + Scale(DEFAULT_SIDE_MARGINS), regionMin.y };
-        const ImVec2 promptRegionMax = { g_aspectRatioOffsetX + Scale(1280.0f - DEFAULT_SIDE_MARGINS), regionMax.y };
+        const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
         const char* promptText = Localise("Mods_Button_Open").c_str();
         const float iconWidth = Scale(g_iconWidths[EButtonIcon::X]);
         const float iconHeight = Scale(g_iconHeights[EButtonIcon::X]);
         const float textWidth = g_fntNewRodin->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, promptText).x;
         const float maxTextWidth = Scale(180.0f);
         const float textScale = std::min(1.0f, maxTextWidth / std::max(textWidth, 1.0f));
+        const float edgePadding = Scale(16.0f);
+        const float promptY = displaySize.y - edgePadding - iconHeight;
+        const float iconLeft = edgePadding;
+        const float iconRight = iconLeft + iconWidth;
+        const float textLeft = iconRight + iconMarginX;
         float offset = 0.0f;
 
-        // Keep the shortcut at the bottom-left safe margin, with the controller icon before the label.
+        // Anchor the prompt to the actual bottom-left viewport edge, outside the game's safe-area margins.
         // The shared X glyph resolves to Xbox X or PlayStation Square per the configured/automatic icon set.
-        ImVec2 iconMin = { promptRegionMin.x - iconWidth - iconMarginX, promptRegionMin.y };
-        ImVec2 iconMax = { promptRegionMin.x - iconMarginX, promptRegionMin.y + iconHeight };
+        ImVec2 promptRegionMin = { textLeft, promptY };
+        ImVec2 promptRegionMax = { displaySize.x - edgePadding, displaySize.y - edgePadding };
+        ImVec2 iconMin = { iconLeft, promptY };
+        ImVec2 iconMax = { iconRight, promptY + iconHeight };
         DrawGuide(&offset, promptRegionMin, promptRegionMax, EButtonIcon::X, EButtonAlignment::Left,
             iconMin, iconMax, EFontQuality::High, textWidth, maxTextWidth, textScale, fontSize, promptText);
     }
