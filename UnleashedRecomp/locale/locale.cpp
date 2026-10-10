@@ -242,6 +242,19 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
         }
     },
     {
+        // Notes: PS5 confirmation popup for a restart-required setting; confirming closes the app and requires a manual relaunch.
+        // Japanese Notes: This localization should include furigana.
+        "Options_Message_RestartConfirmClose",
+        {
+            { ELanguage::English,  "Some changed settings take effect only after you\nclose and relaunch the game.\n\nClose the game now? Relaunch it afterward\nto apply these changes." },
+            { ELanguage::Japanese, "[変更:へんこう]された[設定:せってい]は、[再起動:さいきどう]で\n[反映:はんえい]されます\n\nゲームを[終了:しゅうりょう]しますか？\n[変更:へんこう]の[適用:てきよう]には、[再起動:さいきどう]してください。" },
+            { ELanguage::German,   "Einige Änderungen werden erst wirksam, wenn\ndas Spiel geschlossen und neu gestartet wird.\n\nMöchtest du das Spiel jetzt schließen?\nStarte es neu, um die Änderungen anzuwenden." },
+            { ELanguage::French,   "Certains changements ne prennent effet qu’après\nla fermeture puis le redémarrage du jeu.\n\nVoulez-vous fermer le jeu maintenant ?\nRelancez-le pour appliquer ces changements." },
+            { ELanguage::Spanish,  "Algunos cambios solo se aplican al cerrar y\nvolver a iniciar el juego.\n\n¿Quieres cerrar el juego ahora?\nInícialo de nuevo para aplicarlos." },
+            { ELanguage::Italian,  "Alcune modifiche si applicano solo dopo aver\nchiuso e riavviato il gioco.\n\nVuoi chiudere il gioco ora?\nRiavvialo per applicarle." }
+        }
+    },
+    {
         // Notes: confirmation popup when leaving the options menu after changing a setting that requires a restart.
         // Japanese Notes: This localization should include furigana.
         "Options_Message_RestartConfirm",
@@ -1282,6 +1295,17 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
             { ELanguage::French,   "Options" },
             { ELanguage::Spanish,  "Opciones" },
             { ELanguage::Italian,  "Opzioni" }
+        }
+    },
+    {
+        "Mods_MoreOptions",
+        {
+            { ELanguage::English,  "more options" },
+            { ELanguage::Japanese, "その他のオプション" },
+            { ELanguage::German,   "weitere Optionen" },
+            { ELanguage::French,   "options supplémentaires" },
+            { ELanguage::Spanish,  "más opciones" },
+            { ELanguage::Italian,  "altre opzioni" }
         }
     },
     {

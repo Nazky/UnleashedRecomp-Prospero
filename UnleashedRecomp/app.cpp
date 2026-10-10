@@ -4,6 +4,7 @@
 #include <install/installer.h>
 #include <kernel/function.h>
 #include <mod/mod_loader.h>
+#include <os/logger.h>
 #include <os/process.h>
 #include <patches/audio_patches.h>
 #include <patches/inspire_patches.h>
@@ -14,6 +15,7 @@
 #include <user/paths.h>
 #include <user/registry.h>
 #include <atomic>
+#include <cstdio>
 
 static std::atomic<bool> g_pendingLanguageSync = false;
 static ELanguage g_lastAppliedLanguage = ELanguage::English;
@@ -43,8 +45,10 @@ void App::Restart(std::vector<std::string> restartArgs)
 {
 #if defined(__PROSPERO__)
     (void)restartArgs;
-    // Soft reboot keeps this process alive, so refresh the virtual mod overlay
-    // from the just-committed ModsDB.ini and mod.ini values first.
+    // Keep the legacy in-process reboot for non-settings callers. Restart-required
+    // settings use RestartForSettings() and leave through the PS5 shell instead.
+    // Refresh the virtual mod overlay from the just-committed ModsDB.ini and
+    // mod.ini values before this process continues.
     ModLoader::Init();
     s_language = Config::Language;
     NotifyLanguageChanged();
@@ -58,8 +62,21 @@ void App::Restart(std::vector<std::string> restartArgs)
 #endif
 }
 
+void App::RestartForSettings()
+{
 #if defined(__PROSPERO__)
-extern "C" int sceSystemServiceLoadExec(const char* path, char* const argv[]);
+    // The settings menu commits Config/mod data before this call. Preserve the
+    // executable-path registry entry, then close through App::Exit's shell path.
+    Registry::Save();
+    OptionsMenu::s_isRestartRequired = false;
+    Exit();
+#else
+    Restart();
+#endif
+}
+
+#if defined(__PROSPERO__)
+extern "C" int sceSystemServiceLoadExec(const char* path, const char *const argv[]);
 #endif
 
 void App::Exit()
@@ -71,9 +88,19 @@ void App::Exit()
 #endif
 
 #if defined(__PROSPERO__)
-    sceSystemServiceLoadExec("exit", nullptr);
-    for (;;)
-        usleep(100000);
+    // Native title shutdown must go through the shell; kernel exit(0) raises SIGSYS.
+    std::fflush(nullptr);
+    const int result = sceSystemServiceLoadExec("exit", nullptr);
+    if (result >= 0)
+    {
+        // The shell terminates the title asynchronously after accepting the request.
+        for (;;)
+            usleep(100000);
+    }
+    else
+    {
+        LOGF_ERROR("sceSystemServiceLoadExec(exit) failed: {}", result);
+    }
 #else
     std::_Exit(0);
 #endif

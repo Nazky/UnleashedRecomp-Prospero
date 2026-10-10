@@ -12,6 +12,11 @@
 bool g_isClosed;
 static bool g_pauseRestartFaderBegun = false;
 static int g_pauseRestartMessageResult = -1;
+#if defined(__PROSPERO__)
+static constexpr const char* kRestartConfirmMessageKey = "Options_Message_RestartConfirmClose";
+#else
+static constexpr const char* kRestartConfirmMessageKey = "Options_Message_RestartConfirm";
+#endif
 
 float g_achievementMenuIntroTime = 0.0f;
 constexpr float g_achievementMenuIntroThreshold = 3.0f;
@@ -187,7 +192,7 @@ PPC_FUNC(sub_824B0930)
     {
         std::array<std::string, 2> options = { Localise("Common_Yes"), Localise("Common_No") };
 
-        if (!g_pauseRestartFaderBegun && MessageWindow::Open(Localise("Options_Message_RestartConfirm"), &g_pauseRestartMessageResult, options, 0, 1) == MSG_CLOSED)
+        if (!g_pauseRestartFaderBegun && MessageWindow::Open(Localise(kRestartConfirmMessageKey), &g_pauseRestartMessageResult, options, 0, 1) == MSG_CLOSED)
         {
             const int choice = g_pauseRestartMessageResult;
             g_pauseRestartMessageResult = -1;
@@ -199,7 +204,7 @@ PPC_FUNC(sub_824B0930)
                 Fader::FadeOut(1, []()
                 {
                     g_pauseRestartFaderBegun = false;
-                    App::Restart();
+                    App::RestartForSettings();
                 });
             }
             else

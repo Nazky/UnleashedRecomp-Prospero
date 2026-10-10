@@ -21,6 +21,8 @@ public:
     static uint32_t ToSwaLanguage(ELanguage lang);
     static void NotifyLanguageChanged();
     static void Restart(std::vector<std::string> restartArgs = {});
+    // Restarts for committed settings; PS5 exits through the shell for a manual relaunch.
+    static void RestartForSettings();
     static void Exit();
 };
 

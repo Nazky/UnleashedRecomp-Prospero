@@ -18,6 +18,11 @@ static bool g_installMessageFaderBegun = false;
 static int g_installMessageResult = -1;
 static bool g_restartFaderBegun = false;
 static int g_restartMessageResult = -1;
+#if defined(__PROSPERO__)
+static constexpr const char* kRestartConfirmMessageKey = "Options_Message_RestartConfirmClose";
+#else
+static constexpr const char* kRestartConfirmMessageKey = "Options_Message_RestartConfirm";
+#endif
 
 static bool ProcessInstallMessage()
 {
@@ -113,7 +118,7 @@ PPC_FUNC(sub_825882B8)
     {
         std::array<std::string, 2> options = { Localise("Common_Yes"), Localise("Common_No") };
 
-        if (!g_restartFaderBegun && MessageWindow::Open(Localise("Options_Message_RestartConfirm"), &g_restartMessageResult, options, 0, 1) == MSG_CLOSED)
+        if (!g_restartFaderBegun && MessageWindow::Open(Localise(kRestartConfirmMessageKey), &g_restartMessageResult, options, 0, 1) == MSG_CLOSED)
         {
             const int choice = g_restartMessageResult;
             g_restartMessageResult = -1;
@@ -126,7 +131,7 @@ PPC_FUNC(sub_825882B8)
                     Fader::FadeOut(1, []()
                     {
                         g_restartFaderBegun = false;
-                        App::Restart();
+                        App::RestartForSettings();
                     });
                 }
             }
@@ -160,7 +165,7 @@ PPC_FUNC(sub_825882B8)
         {
             std::array<std::string, 2> options = { Localise("Common_Yes"), Localise("Common_No") };
 
-            if (!g_restartFaderBegun && MessageWindow::Open(Localise("Options_Message_RestartConfirm"), &g_restartMessageResult, options, 0, 1) == MSG_CLOSED)
+            if (!g_restartFaderBegun && MessageWindow::Open(Localise(kRestartConfirmMessageKey), &g_restartMessageResult, options, 0, 1) == MSG_CLOSED)
             {
                 const int choice = g_restartMessageResult;
                 g_restartMessageResult = -1;
@@ -172,7 +177,7 @@ PPC_FUNC(sub_825882B8)
                     Fader::FadeOut(1, []()
                     {
                         g_restartFaderBegun = false;
-                        App::Restart();
+                        App::RestartForSettings();
                     });
                 }
                 else
