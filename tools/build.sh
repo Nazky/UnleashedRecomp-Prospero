@@ -240,6 +240,9 @@ queue_c "$ROOT/tools/XenonRecomp/thirdparty/disasm/disasm.c"
 queue_c "$ROOT/tools/XenonRecomp/thirdparty/disasm/ppc-dis.c"
 queue_c "$ROOT/tools/XenonRecomp/thirdparty/tiny-AES-c/aes.c"
 queue_c "$ROOT/tools/XenonRecomp/thirdparty/libmspack/libmspack/mspack/lzxd.c"
+# PacBrew's zstd archive carries weak trace-hook references; define the
+# optional hooks locally so the PS5 import converter doesn't seek SDK exports.
+queue_c "$NATIVE_DIR/zstd_trace_stubs.c"
 queue_cxx "$ROOT/tools/XenonRecomp/thirdparty/fmt/src/format.cc" none
 queue_cxx "$ROOT/tools/XenonRecomp/thirdparty/fmt/src/os.cc" none
 
