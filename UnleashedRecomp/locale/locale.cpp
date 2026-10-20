@@ -1187,6 +1187,7 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
             { ELanguage::Italian,  "Opzioni mod" }
         }
     },
+
     {
         "Mods_Empty",
         {
@@ -1264,6 +1265,18 @@ std::unordered_map<std::string_view, std::unordered_map<ELanguage, std::string>>
             { ELanguage::Italian,  "Cambia" }
         }
     },
+    {
+        "Mods_Button_Delete",
+        {
+            { ELanguage::English,  "Delete" },
+            { ELanguage::Japanese, "削除" },
+            { ELanguage::German,   "Löschen" },
+            { ELanguage::French,   "Supprimer" },
+            { ELanguage::Spanish,  "Eliminar" },
+            { ELanguage::Italian,  "Elimina" }
+        }
+    },
+
     {
         "Mods_Button_Open",
         {

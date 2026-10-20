@@ -5,17 +5,23 @@
 #include <gpu/imgui/imgui_snapshot.h>
 #include <hid/hid.h>
 #include <locale/locale.h>
+#include <os/logger.h>
 #include <patches/aspect_ratio_patches.h>
 #include <ui/button_guide.h>
 #include <ui/imgui_utils.h>
 #include <user/paths.h>
+#include <fmt/format.h>
 
 #include <algorithm>
 #include <array>
 #include <cfloat>
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
 #include <iterator>
+#include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -40,6 +46,16 @@ namespace
     bool g_isEditingOptions{};
     bool g_inputBuffered{};
     std::string g_errorMessage;
+
+    bool g_isDeleteConfirmationOpen{};
+    size_t g_deleteConfirmationChoice{ 1 };
+    std::string g_deleteTargetFolder;
+    std::string g_deleteErrorMessage;
+    std::vector<std::string> g_stagedDeleteFolders;
+    std::vector<UserModInfo> g_preDeletionOriginalMods;
+    bool g_hasPreDeletionSnapshot{};
+
+    bool g_requiresRestartAfterDelete{};
 
     constexpr size_t MAX_VISIBLE_MODS = 9;
     constexpr size_t MAX_VISIBLE_OPTIONS = 6;
@@ -86,7 +102,16 @@ namespace
     {
         ButtonGuide::Close();
 
-        if (g_isEditingOptions)
+        if (g_isDeleteConfirmationOpen)
+        {
+            std::array<Button, 2> buttons =
+            {
+                Button("Common_Select", 100.0f, EButtonIcon::A, EButtonAlignment::Left),
+                Button("Common_Cancel", 100.0f, EButtonIcon::B, EButtonAlignment::Right)
+            };
+            ButtonGuide::Open(buttons);
+        }
+        else if (g_isEditingOptions)
         {
             std::array<Button, 2> buttons =
             {
@@ -95,12 +120,23 @@ namespace
             };
             ButtonGuide::Open(buttons);
         }
-        else
+        else if (g_isMovingMod)
         {
             std::array<Button, 3> buttons =
             {
-                Button(g_isMovingMod ? "Mods_Button_Drop" : "Mods_Button_Reorder", 130.0f, EButtonIcon::A, EButtonAlignment::Left),
+                Button("Mods_Button_Drop", 130.0f, EButtonIcon::A, EButtonAlignment::Left),
                 Button("Mods_Button_Options", 120.0f, EButtonIcon::X, EButtonAlignment::Left),
+                Button("Common_Back", 75.0f, EButtonIcon::B, EButtonAlignment::Right)
+            };
+            ButtonGuide::Open(buttons);
+        }
+        else
+        {
+            std::array<Button, 4> buttons =
+            {
+                Button("Mods_Button_Reorder", 130.0f, EButtonIcon::A, EButtonAlignment::Left),
+                Button("Mods_Button_Options", 120.0f, EButtonIcon::X, EButtonAlignment::Left),
+                Button("Mods_Button_Delete", 110.0f, EButtonIcon::Y, EButtonAlignment::Left),
                 Button("Common_Back", 75.0f, EButtonIcon::B, EButtonAlignment::Right)
             };
             ButtonGuide::Open(buttons);
@@ -180,9 +216,78 @@ namespace
 
         if (g_inputBuffered)
         {
-            if (pad.IsDown(SWA::eKeyState_A) || pad.IsDown(SWA::eKeyState_Start) || pad.IsDown(SWA::eKeyState_X))
+            if (pad.IsDown(SWA::eKeyState_A) || pad.IsDown(SWA::eKeyState_Start) ||
+                pad.IsDown(SWA::eKeyState_X) || pad.IsDown(SWA::eKeyState_Y))
                 return;
             g_inputBuffered = false;
+        }
+
+        if (g_isDeleteConfirmationOpen)
+        {
+            if (pad.IsTapped(SWA::eKeyState_B))
+            {
+                g_isDeleteConfirmationOpen = false;
+                g_deleteErrorMessage.clear();
+                UpdateButtonGuide();
+                Game_PlaySound("sys_worldmap_cansel");
+                return;
+            }
+            if (pad.IsTapped(SWA::eKeyState_DpadLeft) || pad.IsTapped(SWA::eKeyState_DpadRight))
+            {
+                g_deleteConfirmationChoice = 1 - g_deleteConfirmationChoice;
+                g_deleteErrorMessage.clear();
+                PulseSelection();
+                return;
+            }
+            if (pad.IsTapped(SWA::eKeyState_A))
+            {
+                if (g_deleteConfirmationChoice == 0)
+                {
+                    g_isDeleteConfirmationOpen = false;
+                    g_deleteErrorMessage.clear();
+                    UpdateButtonGuide();
+                    Game_PlaySound("sys_worldmap_cansel");
+                    return;
+                }
+
+                std::string error;
+                if (!ModLoader::StageUserModDeletion(g_deleteTargetFolder, error))
+                {
+                    g_deleteErrorMessage = error.empty() ? "Could not stage this mod for deletion." : std::move(error);
+                    Game_PlaySound("sys_worldmap_cansel");
+                    return;
+                }
+
+                if (g_stagedDeleteFolders.empty())
+                {
+                    g_preDeletionOriginalMods = g_originalMods;
+                    g_hasPreDeletionSnapshot = true;
+                }
+                g_stagedDeleteFolders.emplace_back(g_deleteTargetFolder);
+                const auto removeMod = [&](std::vector<UserModInfo>& mods)
+                {
+                    mods.erase(std::remove_if(mods.begin(), mods.end(), [&](const UserModInfo& mod)
+                    {
+                        return mod.folderName == g_deleteTargetFolder;
+                    }), mods.end());
+                };
+                removeMod(g_workingMods);
+                removeMod(g_originalMods);
+                g_requiresRestartAfterDelete = true;
+                if (g_workingMods.empty())
+                    g_selectedModIndex = 0;
+                else
+                    g_selectedModIndex = std::min(g_selectedModIndex, g_workingMods.size() - 1);
+                g_firstVisibleModIndex = std::min(g_firstVisibleModIndex, g_selectedModIndex);
+                g_isDeleteConfirmationOpen = false;
+                g_deleteTargetFolder.clear();
+                g_deleteErrorMessage.clear();
+                UpdateButtonGuide();
+                Game_PlaySound("sys_worldmap_decide");
+                hid::PulseMenuVibration();
+                return;
+            }
+            return;
         }
 
         if (g_isEditingOptions)
@@ -221,7 +326,6 @@ namespace
             {
                 CycleSelectedOption(true);
             }
-
             return;
         }
 
@@ -296,6 +400,19 @@ namespace
                 g_optionScrollPosition = 0.0f;
                 g_optionSelectionTime = ImGui::GetTime();
                 g_errorMessage.clear();
+                UpdateButtonGuide();
+                Game_PlaySound("sys_worldmap_decide");
+            }
+        }
+        else if (pad.IsTapped(SWA::eKeyState_Y))
+        {
+            const UserModInfo* mod = GetSelectedMod();
+            if (mod != nullptr)
+            {
+                g_deleteTargetFolder = mod->folderName;
+                g_deleteConfirmationChoice = 0;
+                g_deleteErrorMessage.clear();
+                g_isDeleteConfirmationOpen = true;
                 UpdateButtonGuide();
                 Game_PlaySound("sys_worldmap_decide");
             }
@@ -735,6 +852,62 @@ namespace
         }
     }
 
+    void DrawDeleteConfirmation(float alpha)
+    {
+        if (!g_isDeleteConfirmationOpen)
+            return;
+        auto drawList = ImGui::GetBackgroundDrawList();
+        const ImVec2 screen = ImGui::GetIO().DisplaySize;
+        drawList->AddRectFilled({ 0.0f, 0.0f }, screen, ApplyAlpha(IM_COL32(0, 0, 0, 160), alpha));
+
+        const float width = std::min(Scale(650.0f), screen.x - Scale(36.0f));
+        const float height = Scale(260.0f);
+        const ImVec2 min{ (screen.x - width) * 0.5f, (screen.y - height) * 0.5f };
+        const ImVec2 max{ min.x + width, min.y + height };
+        DrawOptionsPanelFrame(min, max, alpha);
+        DrawPanelHeader({ min.x + Scale(8.0f), min.y + Scale(7.0f) },
+            { max.x - Scale(8.0f), min.y + Scale(48.0f) }, "Delete mod?", alpha);
+
+        const std::string question = fmt::format("Remove '{}' from the mods folder?", g_deleteTargetFolder);
+        DrawTextWithMarqueeShadow(g_textFont, Scale(18.0f), { min.x + Scale(24.0f), min.y + Scale(70.0f) },
+            { min.x + Scale(18.0f), min.y + Scale(65.0f) }, { max.x - Scale(18.0f), min.y + Scale(110.0f) },
+            ApplyAlpha(IM_COL32(240, 245, 235, 255), alpha), question.c_str(), g_appearTime, 1.0, 38.0,
+            1.0f, 0.5f, ApplyAlpha(IM_COL32(0, 0, 0, 255), alpha));
+        DrawTextBasic(g_smallFont, Scale(14.0f), { min.x + Scale(24.0f), min.y + Scale(116.0f) },
+            ApplyAlpha(IM_COL32(185, 205, 185, 255), alpha), "The files are kept until you accept the restart; choosing No restores the mod.");
+
+        const float buttonWidth = Scale(170.0f);
+        const float buttonHeight = Scale(42.0f);
+        const float buttonY = max.y - Scale(66.0f);
+        const float gap = Scale(18.0f);
+        const float buttonsWidth = buttonWidth * 2.0f + gap;
+        const float firstX = min.x + (width - buttonsWidth) * 0.5f;
+        for (size_t index = 0; index < 2; ++index)
+        {
+            const float x = firstX + static_cast<float>(index) * (buttonWidth + gap);
+            const ImVec2 buttonMin{ x, buttonY };
+            const ImVec2 buttonMax{ x + buttonWidth, buttonY + buttonHeight };
+            const bool selected = index == g_deleteConfirmationChoice;
+            if (selected)
+                DrawOptionsSelection(buttonMin, buttonMax, alpha);
+            else
+                drawList->AddRectFilled(buttonMin, buttonMax, ApplyAlpha(IM_COL32(0, 25, 0, 220), alpha), Scale(3.0f));
+            drawList->AddRect(buttonMin, buttonMax,
+                ApplyAlpha(selected ? IM_COL32(180, 255, 110, 255) : IM_COL32(0, 115, 0, 200), alpha),
+                Scale(3.0f), 0, Scale(1.0f));
+            const std::string label = index == 0 ? Localise("Common_Cancel") : Localise("Mods_Button_Delete");
+            const ImVec2 labelSize = g_smallFont->CalcTextSizeA(Scale(16.0f), FLT_MAX, 0.0f, label.c_str());
+            DrawTextBasic(g_smallFont, Scale(16.0f),
+                { x + (buttonWidth - labelSize.x) * 0.5f, buttonY + Scale(11.0f) },
+                ApplyAlpha(selected ? IM_COL32(255, 245, 205, 255) : IM_COL32(190, 220, 190, 255), alpha), label.c_str());
+        }
+        if (!g_deleteErrorMessage.empty())
+            DrawTextWithMarqueeShadow(g_smallFont, Scale(12.0f), { min.x + Scale(24.0f), max.y - Scale(88.0f) },
+                { min.x + Scale(18.0f), max.y - Scale(96.0f) }, { max.x - Scale(18.0f), max.y - Scale(68.0f) },
+                ApplyAlpha(IM_COL32(255, 130, 110, 255), alpha), g_deleteErrorMessage.c_str(), g_appearTime, 1.0, 38.0,
+                1.0f, 0.5f, ApplyAlpha(IM_COL32(0, 0, 0, 255), alpha));
+    }
+
     void DrawOptionsStyleBands(ImDrawList* drawList, ImVec2 screen, float alpha)
     {
         const float bandHeight = Scale(105.0f);
@@ -793,7 +966,6 @@ namespace
         const ImVec2 listMax{ listMin.x + listWidth, top + panelHeight };
         const ImVec2 detailMin{ listMax.x + gap, top };
         const ImVec2 detailMax{ screen.x - horizontalMargin, top + panelHeight };
-
         DrawModList(drawList, listMin, listMax, alpha);
         DrawModDetails(drawList, detailMin, detailMax, alpha);
 
@@ -806,6 +978,8 @@ namespace
             { screen.x - horizontalMargin, screen.y - Scale(7.0f) },
             ApplyAlpha(IM_COL32(165, 205, 170, 220), alpha), pathText.c_str(), g_appearTime, 1.0, 30.0,
             1.0f, 0.5f, ApplyAlpha(IM_COL32(0, 0, 0, 255), alpha));
+
+        DrawDeleteConfirmation(alpha);
     }
 }
 
@@ -841,12 +1015,16 @@ void ModsMenu::Open()
     g_optionSelectionTime = g_appearTime;
     g_isMovingMod = false;
     g_isEditingOptions = false;
+    g_isDeleteConfirmationOpen = false;
+    g_deleteTargetFolder.clear();
+    g_deleteErrorMessage.clear();
     g_errorMessage.clear();
     s_isRestartRequired = false;
     s_isVisible = true;
 
     const auto& pad = SWA::CInputState::GetInstance()->GetPadState();
-    g_inputBuffered = pad.IsDown(SWA::eKeyState_A) || pad.IsDown(SWA::eKeyState_Start) || pad.IsDown(SWA::eKeyState_X);
+    g_inputBuffered = pad.IsDown(SWA::eKeyState_A) || pad.IsDown(SWA::eKeyState_Start) ||
+        pad.IsDown(SWA::eKeyState_X) || pad.IsDown(SWA::eKeyState_Y);
 
     UpdateButtonGuide();
     hid::SetProhibitedInputs(XAMINPUT_GAMEPAD_START, false, true);
@@ -860,7 +1038,8 @@ void ModsMenu::Close()
     s_isVisible = false;
     g_isMovingMod = false;
     g_isEditingOptions = false;
-    s_isRestartRequired = HasChanges();
+    g_isDeleteConfirmationOpen = false;
+    s_isRestartRequired = HasChanges() || g_requiresRestartAfterDelete;
     if (!s_isRestartRequired)
         g_workingMods = g_originalMods;
 
@@ -885,6 +1064,18 @@ bool ModsMenu::CommitRestartSettings()
     }
 
     g_originalMods = g_workingMods;
+    for (const std::string& folderName : g_stagedDeleteFolders)
+    {
+        std::string deletionError;
+        if (!ModLoader::FinalizeStagedUserModDeletion(folderName, deletionError))
+        {
+            LOGFN_WARNING("Could not finalize deletion of mod '{}': {}.", folderName, deletionError);
+        }
+    }
+    g_stagedDeleteFolders.clear();
+    g_preDeletionOriginalMods.clear();
+    g_hasPreDeletionSnapshot = false;
+    g_requiresRestartAfterDelete = false;
     s_isRestartRequired = false;
     g_errorMessage.clear();
     return true;
@@ -892,9 +1083,43 @@ bool ModsMenu::CommitRestartSettings()
 
 void ModsMenu::RevertRestartSettings()
 {
-    g_workingMods = g_originalMods;
+    bool restoreFailed = false;
+    for (const std::string& folderName : g_stagedDeleteFolders)
+    {
+        std::string restoreError;
+        if (!ModLoader::RestoreStagedUserModDeletion(folderName, restoreError))
+        {
+            restoreFailed = true;
+            LOGFN_WARNING("Could not restore cancelled mod deletion '{}': {}.", folderName, restoreError);
+        }
+    }
+
+    if (g_hasPreDeletionSnapshot && !restoreFailed)
+    {
+        g_originalMods = g_preDeletionOriginalMods;
+        g_workingMods = g_originalMods;
+    }
+    else if (restoreFailed)
+    {
+        g_originalMods = ModLoader::GetUserMods();
+        g_workingMods = g_originalMods;
+    }
+    else
+    {
+        g_workingMods = g_originalMods;
+    }
+
+    g_stagedDeleteFolders.clear();
+    g_preDeletionOriginalMods.clear();
+    g_hasPreDeletionSnapshot = false;
+    g_requiresRestartAfterDelete = false;
     s_isRestartRequired = false;
     g_isMovingMod = false;
     g_isEditingOptions = false;
+    if (g_workingMods.empty())
+        g_selectedModIndex = 0;
+    else
+        g_selectedModIndex = std::min(g_selectedModIndex, g_workingMods.size() - 1);
+    g_firstVisibleModIndex = std::min(g_firstVisibleModIndex, g_selectedModIndex);
     g_errorMessage.clear();
 }

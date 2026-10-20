@@ -364,7 +364,7 @@ if (( ${#QUEUE_CXX_STDPCH[@]} > 0 )); then
     (( ${#CMDS[@]} > 0 )) && run_parallel_compile "${CMDS[@]}"
 fi
 
-echo "==> [7/7] Linking PS5 PIE ELF with RADV (libvulkan_radeon.ps5.a) + PacBrew (SDL2, SDL2_mixer, vorbis, ogg, zstd)..."
+echo "==> [7/7] Linking PS5 PIE ELF with RADV (bundled zlib), PacBrew libs, and PS5 libc compatibility shims..."
 source "$ROOT/tools/radv-link.sh"
 radv_link_recipe "$ROOT" "$SDK_ROOT" "$RADV_ARCHIVE" || exit 2
 

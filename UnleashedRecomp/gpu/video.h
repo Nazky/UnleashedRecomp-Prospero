@@ -409,5 +409,6 @@ enum GuestTextureAddress
 inline bool g_needsResize;
 
 extern std::unique_ptr<GuestTexture> LoadTexture(const uint8_t* data, size_t dataSize, RenderComponentMapping componentMapping = RenderComponentMapping());
+extern void ReleaseImGuiImageTextures(std::vector<std::unique_ptr<GuestTexture>>& textures);
 
 extern void VideoConfigValueChangedCallback(class IConfigDef* config);

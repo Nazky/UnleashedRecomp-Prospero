@@ -6103,6 +6103,8 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
 
         if (stbImage != nullptr)
         {
+            texture.width = static_cast<uint32_t>(width);
+            texture.height = static_cast<uint32_t>(height);
             texture.textureHolder = g_device->createTexture(RenderTextureDesc::Texture2D(width, height, 1, RenderFormat::R8G8B8A8_UNORM));
             texture.texture = texture.textureHolder.get();
             texture.viewDimension = RenderTextureViewDimension::TEXTURE_2D;
@@ -6161,6 +6163,36 @@ std::unique_ptr<GuestTexture> LoadTexture(const uint8_t* data, size_t dataSize, 
         return std::make_unique<GuestTexture>(std::move(texture));
 
     return nullptr;
+}
+
+static void ReleaseTextureDescriptors(GuestTexture* texture)
+{
+    if (texture == nullptr)
+        return;
+
+    if (texture->descriptorIndex != 0)
+    {
+        g_textureDescriptorAllocator.free(texture->descriptorIndex);
+        texture->descriptorIndex = 0;
+    }
+    ReleaseTextureDescriptors(texture->patchedTexture.get());
+    ReleaseTextureDescriptors(texture->recreatedCubeMapTexture.get());
+}
+
+void ReleaseImGuiImageTextures(std::vector<std::unique_ptr<GuestTexture>>& textures)
+{
+    if (textures.empty())
+        return;
+
+    // ImGui draw lists can still be in flight for up to NUM_FRAMES. Wait once
+    // for the batch before recycling any descriptor index or texture storage.
+    Video::WaitForGPU();
+    for (auto& texture : textures)
+    {
+        ReleaseTextureDescriptors(texture.get());
+        texture.reset();
+    }
+    textures.clear();
 }
 
 static void DiffPatchTexture(GuestTexture& texture, uint8_t* data, uint32_t dataSize, XXH64_hash_t hash)

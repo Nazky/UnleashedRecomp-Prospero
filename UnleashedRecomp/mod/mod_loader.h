@@ -53,6 +53,12 @@ struct ModLoader
 
     static const std::vector<UserModInfo>& GetUserMods();
     static bool CommitUserMods(const std::vector<UserModInfo>& mods, std::string& errorMessage);
+    static bool DeleteUserMod(std::string_view folderName, std::string& errorMessage);
+    static bool StageUserModDeletion(std::string_view folderName, std::string& errorMessage);
+    static bool RestoreStagedUserModDeletion(std::string_view folderName, std::string& errorMessage);
+    static bool FinalizeStagedUserModDeletion(std::string_view folderName, std::string& errorMessage);
+    static void RefreshUserMods();
+    static bool ValidateModFolder(const std::filesystem::path& modFolder, std::string& errorMessage);
 
     static void Init();
     static void NotifyStartupLoadingStarted();

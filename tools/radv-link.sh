@@ -315,6 +315,11 @@ EOF_EMUTLS
     "$compiler" --target=x86_64-sie-ps5 -fPIC -fno-plt -fno-stack-protector \
         -isysroot "$sdk_root" -isystem "$sdk_root/target/include" \
         -O2 -c "$root/build/ps5-emutls-cxa.c" -o "$root/build/ps5-emutls-cxa.o"
+    "$compiler" --target=x86_64-sie-ps5 -fPIC -fno-plt -fno-stack-protector \
+        -isysroot "$sdk_root" -isystem "$sdk_root/target/include" \
+        -O2 -c "$root/tooling/native/ps5-libc-compat.c" -o "$root/build/ps5-libc-compat.o"
+    "$compiler" --target=x86_64-sie-ps5 -fPIC -c \
+        "$root/tooling/native/ps5-jmp-compat.S" -o "$root/build/ps5-jmp-compat.o"
 
     radv_linker_script=(-T "$root/tooling/psbc/ps5-pie-unwind.ld" -L "$root/tooling/native")
     # Whole: Mesa's dispatch tables name every entry point through a weak
@@ -322,6 +327,7 @@ EOF_EMUTLS
     # point whose object nothing else needs would be NULL (the first console
     # run of PPSA99014 called one inside wsi_device_init).
     radv_link_inputs=(-L "$sdk_root/target/lib" "$root/build/ps5-emutls-cxa.o"
+        "$root/build/ps5-libc-compat.o" "$root/build/ps5-jmp-compat.o"
         --whole-archive "$archive" --no-whole-archive
         --start-group "$sdk_root/target/lib/libc++.a" "$sdk_root/target/lib/libc++abi.a"
         "$sdk_root/target/lib/libunwind.a" "$builtins" "$platform" --end-group)
@@ -333,6 +339,10 @@ EOF_EMUTLS
     # (src/memstream.c in the SDK fork's platform layer): Mesa's u_memstream,
     # RADV's recorded shader IR among its users.
     radv_link_flags+=(--wrap=fclose --wrap=fflush)
+    # Some PS5 socket descriptors reject F_SETFD/FD_CLOEXEC with EINVAL.
+    # Route fcntl through the narrow compatibility shim; other commands still
+    # reach the SDK fcntl unchanged.
+    radv_link_flags+=(--wrap=fcntl)
     local name
     # Every allocation the title makes goes to the platform's heap in direct
     # memory (ps5platform/heap.h): libc's private heap ran out under the CTS's
@@ -364,6 +374,13 @@ EOF_EMUTLS
             posix_fallocate access \
             openat unlinkat fchmodat fstatat mkdirat renameat memfd_create; do
         radv_link_flags+=("--defsym=$name=ps5_$name")
+    done
+    # PacBrew's Linux-oriented curl/OpenSSL archives reference GNU libc entry
+    # points missing from the payload SDK. Bind the network extensions to
+    # local compatibility functions; _setjmp/_longjmp are hidden tail-call
+    # shims in ps5-jmp-compat.S so their saved context belongs to the caller.
+    for name in sendmmsg recvmmsg pipe2 if_nametoindex; do
+        radv_link_flags+=("--defsym=$name=ps5_compat_$name")
     done
     # A bound name the SDK's stub libraries also define would be exported from
     # the title to override theirs, and the title converter refuses exports:

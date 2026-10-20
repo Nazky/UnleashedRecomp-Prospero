@@ -13,7 +13,10 @@ extern "C"
     int32_t sceAudioOutOutput(int32_t handle, const void* ptr);
     int32_t sceAudioOutClose(int32_t handle);
 }
+static constexpr uint32_t PS5_AUDIO_FORMAT_S16_STEREO = 1;
+static constexpr uint32_t PS5_AUDIO_FORMAT_S16_8CH = 2;
 static int32_t s_ps5AudioPort = -1;
+static bool s_ps5AudioSurround{};
 #endif
 
 static PPCFunc* g_clientCallback{};
@@ -23,28 +26,56 @@ static bool g_downMixToStereo;
 
 static void CreateAudioDevice()
 {
+    const bool surround = Config::ChannelConfiguration == EChannelConfiguration::Surround;
 #if defined(__PROSPERO__)
     if (s_ps5AudioPort > 0)
     {
         sceAudioOutClose(s_ps5AudioPort);
         s_ps5AudioPort = -1;
     }
-    int32_t initRes = sceAudioOutInit();
-    if (initRes == 0 || (uint32_t)initRes == 0x8026000e)
+    s_ps5AudioSurround = false;
+
+    const int32_t initResult = sceAudioOutInit();
+    if (initResult == 0 || static_cast<uint32_t>(initResult) == 0x8026000e)
     {
-        s_ps5AudioPort = sceAudioOutOpen(0xff, 0, 0, XAUDIO_NUM_SAMPLES, XAUDIO_SAMPLES_HZ, 1);
+        const uint32_t requestedFormat = surround
+            ? PS5_AUDIO_FORMAT_S16_8CH
+            : PS5_AUDIO_FORMAT_S16_STEREO;
+        s_ps5AudioPort = sceAudioOutOpen(0xff, 0, 0, XAUDIO_NUM_SAMPLES, XAUDIO_SAMPLES_HZ, requestedFormat);
         if (s_ps5AudioPort > 0)
         {
-            g_downMixToStereo = true;
-            LOGFN("Opened PS5 sceAudioOut port={} (48000 Hz, 256 grain, s16 stereo)", s_ps5AudioPort);
+            s_ps5AudioSurround = surround;
+            g_downMixToStereo = !surround;
+            if (surround)
+            {
+                LOGFN("Opened PS5 sceAudioOut port={} (S16_8CH, 48 kHz/256; 5.1 map FL/FR/FC/LFE/SL/SR/0/0; target-console check pending)",
+                    s_ps5AudioPort);
+            }
+            else
+            {
+                LOGFN("Opened PS5 sceAudioOut port={} (48 kHz, 256 grain, s16 stereo)", s_ps5AudioPort);
+            }
             return;
         }
+
+        if (surround)
+        {
+            LOGFN_WARNING("Could not open the PS5 5.1 audio port (result={}); retrying in stereo.", s_ps5AudioPort);
+            s_ps5AudioPort = sceAudioOutOpen(0xff, 0, 0, XAUDIO_NUM_SAMPLES, XAUDIO_SAMPLES_HZ,
+                PS5_AUDIO_FORMAT_S16_STEREO);
+            if (s_ps5AudioPort > 0)
+            {
+                g_downMixToStereo = true;
+                LOGFN_WARNING("Opened PS5 stereo audio fallback port={}; surround output is unavailable.", s_ps5AudioPort);
+                return;
+            }
+        }
+        s_ps5AudioPort = -1;
     }
 #endif
     if (g_audioDevice != NULL)
         SDL_CloseAudioDevice(g_audioDevice);
 
-    bool surround = Config::ChannelConfiguration == EChannelConfiguration::Surround;
     int allowedChanges = surround ? SDL_AUDIO_ALLOW_CHANNELS_CHANGE : 0;
 
     SDL_AudioSpec desired{}, obtained{};
@@ -153,6 +184,41 @@ void XAudioRegisterClient(PPCFunc* callback, uint32_t param)
 void XAudioSubmitFrame(void* samples)
 {
     auto floatSamples = reinterpret_cast<be<float>*>(samples);
+
+#if defined(__PROSPERO__)
+    if (s_ps5AudioPort > 0 && s_ps5AudioSurround)
+    {
+        alignas(16) std::array<int16_t, 8 * XAUDIO_NUM_SAMPLES> pcm16{};
+        for (size_t i = 0; i < XAUDIO_NUM_SAMPLES; ++i)
+        {
+            const float frontLeft = floatSamples[0 * XAUDIO_NUM_SAMPLES + i] * Config::MasterVolume;
+            const float frontRight = floatSamples[1 * XAUDIO_NUM_SAMPLES + i] * Config::MasterVolume;
+            const float center = floatSamples[2 * XAUDIO_NUM_SAMPLES + i] * Config::MasterVolume;
+            const float lfe = floatSamples[3 * XAUDIO_NUM_SAMPLES + i] * Config::MasterVolume;
+            const float surroundLeft = floatSamples[4 * XAUDIO_NUM_SAMPLES + i] * Config::MasterVolume;
+            const float surroundRight = floatSamples[5 * XAUDIO_NUM_SAMPLES + i] * Config::MasterVolume;
+
+            // XAudio's 5.1 source is FL, FR, FC, LFE, SL, SR. PS5's
+            // S16_8CH interleave is FL, FR, FC, LFE, BL, BR, SL, SR.
+            // In the PS5 5.1 LPCM route the surround pair is carried in
+            // slots 4/5; slots 6/7 are the additional side pair for 7.1.
+            // Keep the 5.1 pair in the first six channels or it is omitted by
+            // the 5.1 route (the old 6/7 mapping made surround silent).
+            const std::array<float, 8> outputChannels =
+            {
+                frontLeft, frontRight, center, lfe,
+                surroundLeft, surroundRight, 0.0f, 0.0f
+            };
+            for (size_t channel = 0; channel < outputChannels.size(); ++channel)
+            {
+                const float sample = std::clamp(outputChannels[channel], -1.0f, 1.0f);
+                pcm16[i * outputChannels.size() + channel] = static_cast<int16_t>(sample * 32767.0f);
+            }
+        }
+        sceAudioOutOutput(s_ps5AudioPort, pcm16.data());
+        return;
+    }
+#endif
 
     if (g_downMixToStereo)
     {

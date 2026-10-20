@@ -9,8 +9,8 @@ BUILD_DIR="${1:-$ROOT/build}"
 OUT_RES_DIR="$BUILD_DIR/res"
 TOOLS_BIN="$ROOT/tools/bin"
 FILE_TO_C="$TOOLS_BIN/file_to_c"
-
-if [[ -f "$OUT_RES_DIR/bc_diff/button_bc_diff.bin.h" && -f "$OUT_RES_DIR/sounds/sys_actstg_pausewinopen.ogg.c" ]]; then
+if [[ -f "$OUT_RES_DIR/bc_diff/button_bc_diff.bin.h" &&
+      -f "$OUT_RES_DIR/sounds/sys_actstg_pausewinopen.ogg.c" ]]; then
     exit 0
 fi
 
@@ -35,7 +35,7 @@ if [[ -z "$RES_SRC_DIR" ]]; then
     fi
 fi
 
-echo "==> [resources] Generating 86 embedded BIN2C resource files into $OUT_RES_DIR..."
+echo "==> [resources] Generating embedded BIN2C resources into $OUT_RES_DIR..."
 python3 - "$ROOT/UnleashedRecomp/CMakeLists.txt" "$RES_SRC_DIR" "$OUT_RES_DIR" "$FILE_TO_C" <<'PY'
 import os
 import re
@@ -71,3 +71,4 @@ with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as ex:
 
 print(f"    Generated {len(tasks)} resource pairs (.c + .h).")
 PY
+

@@ -56,13 +56,13 @@ By combining [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) (PowerPC-to
 | **Restart-Required Settings Exit** | Changing a setting that requires a restart (`Language`, `Voice Language`, `Channel Configuration`, or supported mod options) shows a confirmation in the selected language. Confirming saves the changes and requests a shell-mediated PS5 app close; the game does not relaunch itself, so launch it again to apply the settings. Cancelling reverts the changes and returns to the menu. |
 | **Console-Tailored Options & UI** | Hides desktop-only settings, keeps PS5 output at 4K with internal resolution scaling, and stores user data in `/data/UnleashedRecomp` on standard PS5 installs. A `portable.txt` marker beside the executable opts into portable storage; PS5 startup does not run a `/data` read/write permission preflight or choose an executable-root fallback based on probe results. |
 | **Automatic PS5 Mod Loading** | Scans direct-child mod folders in the user-data `mods/` directory, registers valid non-empty `mod.ini` mods through generated CPKREDIR/`ModsDB.ini` configuration, and overlays their files virtually without copying or overwriting base-game files. Every valid user-folder mod is enabled automatically. |
-| **Title-Screen Mods Menu** | When valid user mods are present, a localized bottom-left **Square (PlayStation) / X (Xbox)** shortcut opens a dedicated menu, separate from the standard title-menu entries. Its visual treatment now matches the Options screen. Installed mods and each mod's supported options are continuous scrollable lists (not page-by-page views), with smooth scrolling and an in-place scrollbar when needed; the details view previews as many options as fit instead of stopping at three, and the editor shows the complete scrollable list. The menu supports load-order changes and supported schema options; confirmed changes are saved before the PS5 app closes, then loaded after a manual relaunch. There is no per-mod enable/disable switch. A localized startup count appears only when at least one mod is detected and may include valid external CPKREDIR-loaded mods. |
+| **Title-Screen Mods Menu** | When at least one valid user-folder mod is present, a localized bottom-left **Square (PlayStation) / X (Xbox)** shortcut opens a separate Mods Menu. The icon follows the configured controller-icon setting. The Manager lists user-folder mods, supports load-order changes and mod-provided `ConfigSchemaFile` options, and uses continuous scrolling. Press **Triangle** on a selected mod to stage its deletion; cancelling the restart restores it, while confirming removes it. There is no per-mod enable/disable switch: all valid user-folder mods are enabled automatically. Startup status reports the user-folder scan count, including zero, and can include accepted external CPKREDIR mods, which are not shown in the Manager. |
 | **Localization-Safe Options Tabs** | Measures the localized category titles and proportionally reduces their font size when the whole tab row would overflow, so long translations remain readable without horizontal glyph squeezing or clipping. |
 | **Native DualSense (`scePad`), Touchpad & Haptics** | Polls the DualSense directly and supports touchpad navigation. On PS5 it tries the type-10 `sceAudioOut` vibration port and streams synthesized PCM in advanced mode; if that path is unavailable or fails, it attempts the compatible-mode `scePadSetVibration` fallback. On PS5, gameplay rumble uses the selected route slider as its normal gain; while the game’s Boost filter signal is active, game rumble is doubled and capped at full scale. `Rumble Strength` (0–100%, default 100%) controls SDL and compatible-mode motor rumble; on PS5, `Vibration Strength` (0–100%, default 100%) separately controls the advanced type-10 DualSense audio-haptics route. Boost doubling applies to PS5 gameplay output, not SDL/DS4 or menu pulses. Menu pulses use the slider for their active route. When `Vibration Menu` is enabled, adjusting either strength slider also emits a brief preview pulse scaled by the selected percentage. These controls appear only while master `Vibration` is on. Conventional mode-2 rumble is reported working; the new audio-haptics route still needs hardware validation. Adaptive triggers remain out of scope. |
 | **Optional System-Information Panel** | A top-left Sonic Unleashed overlay shows FPS, CPU/GPU frame metrics, heap use, render resolution, and game paths. CPU/GPU temperature readings remain disabled; the accent uses a paginated palette of 256 colors. Heap readings are allocator metrics, not total-system RAM. |
 | **PS5 Graphics & Frame-Rate Controls** | Offers 30, 60, 90, and 120 FPS target choices (60 default), retains 4K output, and exposes anisotropic filtering, depth-of-field quality, and the existing internal-resolution scale. The package now declares high-frame-rate support; the pinned PS5 Mesa WSI can select 119.88 Hz on a compatible display and falls back to 59.94 Hz otherwise. The 120 FPS cap still depends on the game sustaining that workload; Unleashed's high-refresh path has not yet been hardware-validated. |
 | **Optional `/data` Elevation** | Cooperates with an already-running Lapy service; the exact-title one-shot helper is opt-in and firmware-sensitive. This does not change the standard user-data path: non-portable PS5 installs use `/data/UnleashedRecomp` without a permission-probe-based fallback. |
-| **Zero-Latency 48 kHz `sceAudioOut`** | Streams 256-sample stereo audio frames directly to Sony's `sceAudioOut` hardware API at `48000 Hz`, matching Xbox 360 XAudio's native 256-sample grain without resampling latency. |
+| **48 kHz `sceAudioOut` Stereo / Surround Selection** | Stereo mode keeps the direct 256-sample S16 stereo port. Selecting Surround requests PS5's format-2 eight-channel S16 port and maps XAudio's 5.1 `FL/FR/FC/LFE/SL/SR` channels to PS5 slots `0–5`, leaving `6–7` silent. This follows the hardware-tested PS5 order `FL/FR/FC/LFE/BL/BR/SL/SR`; the corrected 5.1 route still needs confirmation in this build on the user's console. |
 | **Built-In Linux PS5 Asset Pipeline** | Includes native Linux converters for **4K `BC7_UNORM` DX10 DDS** backgrounds (`tools/png_to_bc7_dds`) and **looped 48 kHz ATRAC9** audio (`tools/wav_to_at9`) — no Windows tools required. |
 
 Storage migration, the experimental elevation build gate, DualSense motor mapping and haptic-audio fallback, and Vulkan/Mesa compatibility notes are documented in [`docs/PS5-STORAGE-INPUT-GRAPHICS.md`](docs/PS5-STORAGE-INPUT-GRAPHICS.md).
@@ -71,22 +71,22 @@ Storage migration, the experimental elevation build gate, DualSense motor mappin
 
 ## Mod Support
 
-The PS5 build can load supported HMM-style and UMM-style `mod.ini` mods from the user-data folder. On a normal, non-portable PS5 installation, use:
+The PS5 build loads HMM-style and UMM-style `mod.ini` mods from the user-data folder. On a normal, non-portable PS5 installation, the path is:
 
 ```text
 /data/UnleashedRecomp/
-├── cpkredir.ini                 # created/updated automatically at startup
+├── cpkredir.ini                 # created or updated automatically at startup
 └── mods/
-    ├── ModsDB.ini               # generated/updated automatically
-    └── Sonic Black/             # any direct-child mod folder name
-        ├── mod.ini              # must be directly inside this folder
+    ├── ModsDB.ini               # generated or updated automatically
+    └── Sonic Black/             # one direct-child folder per mod
+        ├── mod.ini              # must be directly inside the mod folder
         ├── game files and/or
-        └── subfolders containing mod files
+        └── subfolders containing the mod files
 ```
 
-Extract each mod so its `mod.ini` is directly inside its own folder (for example, `mods/Sonic Black/mod.ini`), not buried beneath another folder or left inside a ZIP. The manifest's include paths must resolve within that mod folder. For HMM-style manifests, the loader reads `IncludeDirCount` and `IncludeDirN` entries (and the supported `IncludeDir` list); UMM-style `[Details]`/`[Filesystem]` manifests are also recognized. A valid folder must contain at least one payload file in its included directories in addition to `mod.ini`.
+Keep each mod's `mod.ini` directly inside its own folder (for example, `mods/Sonic Black/mod.ini`), not buried under another folder or inside an archive. Mod files are found through the include paths declared by that manifest. HMM manifests may use `IncludeDirCount` with `IncludeDirN` entries or the supported `IncludeDir` list; UMM manifests using `[Details]` and `[Filesystem]` are also recognized. Place the mod payload in its included directories.
 
-For example, an HMM manifest that places the mod's files in its root can include:
+For example, an HMM manifest can include files stored at the mod folder's root:
 
 ```ini
 [Main]
@@ -94,21 +94,17 @@ IncludeDirCount=1
 IncludeDir0="."
 ```
 
-The scan happens at app startup, so close and relaunch the game after adding or removing a mod.
-
-At startup, the loader scans only direct-child folders of `mods/`, skips missing, invalid, or empty mods, and automatically enables every valid user-folder mod. It creates or updates `cpkredir.ini` with `Enabled = 1` and a `ModsDbIni` path to `mods/ModsDB.ini`; the generated database records managed mod IDs, manifest paths, and load order. You do not need to create or edit either INI file manually. There is no whole-mod enable/disable switch: valid mods in this folder are active automatically. The menu settings do not create a separate `mods.json` state file; load order is stored in `ModsDB.ini`, and supported option values are saved in the mod's existing configuration INI.
+Mods are scanned at app startup, so close and relaunch the game after adding or removing one. The loader scans direct-child folders of `mods/`, skips folders without a readable, valid manifest, and automatically enables all valid user-folder mods. It creates or updates `cpkredir.ini` with `Enabled = 1` and a `ModsDbIni` path to `mods/ModsDB.ini`; that database stores mod IDs, manifest paths, and load order. You do not need to create or edit either INI file manually. There is no whole-mod enable/disable switch. Load order is stored in `ModsDB.ini`, and supported option values are saved in the mod's existing configuration INI.
 
 ### Title-Screen Mods Menu
 
-When at least one valid mod is present in the user `mods/` folder, the title screen shows a localized shortcut at the bottom-left safe margin, below and independent of the standard title-menu entries. It does not replace or relabel the Install row, and it disappears when the title menu is no longer active. Press **Square** on PlayStation or **X** on Xbox to open the menu. The displayed controller icon follows the configured **PlayStation**, **Xbox**, or **Auto** controller-icon setting; the prompt and menu labels are localized.
+When at least one valid user-folder mod is present, a localized prompt appears below the title menu. Press **Square** on PlayStation or **X** on Xbox to open the separate Mods Menu; the displayed icon follows the configured controller-icon setting. The menu lists mods from the user `mods/` folder, lets you reorder them, and exposes supported options defined by each mod's `ConfigSchemaFile`. Long names, descriptions, and option lists scroll within their panels.
 
-The menu lists only mods managed from the user `mods/` folder. It shows available mod information, lets you reorder the load order, and exposes supported options described by a mod's `ConfigSchemaFile`. Long mod names, descriptions, and option labels scroll within their panels instead of being cut off. Use the on-screen button guide to navigate, reorder, and edit options. Changes are staged until you close the menu; if anything changed, the title screen asks whether to close the game to apply them. Confirming saves the load order and option values, then the PS5 title closes through the system shell; relaunch the game to load those changes. Cancelling discards the staged changes. The menu does not expose CPKREDIR-loaded mods stored outside the user folder.
+Changes are staged while the menu is open. Closing it with changes prompts for a restart: confirming saves the load order and option values, then closes the PS5 title so those changes take effect after relaunch; cancelling discards the staged changes. Press **Triangle** on a selected mod to stage its deletion. If the restart is cancelled, the folder is restored; if confirmed, the staged removal is finalized. The menu has no per-mod enable/disable switch, and it does not list external CPKREDIR mods outside the user folder.
 
-Files are served through the game's existing virtual file overlay: when the game requests a path, the loader checks the active mods and falls back to the base game as appropriate. Mod files stay in the `mods/` folder; the loader does **not** copy them over or overwrite base-game files. The localized startup overlay reports the detected-mod count only when it is greater than zero. The count can also include valid external CPKREDIR mods that the loader accepted, although those external mods are not shown in the Mods Menu.
+Mods are served through the game's virtual file overlay: the loader checks active mod paths when the game requests a file and falls back to the base game as appropriate. Mod files remain in `mods/`; they are not copied over or used to overwrite base-game files. The localized startup status reports the detected-mod count, including zero, and may include valid external CPKREDIR mods accepted by the loader, even though those external mods are not shown in the menu.
 
-On a standard non-portable PS5 installation, the user-data path is fixed at `/data/UnleashedRecomp`; the app does not perform a `/data` read/write permission preflight or fall back to the executable root based on a permission check. To use the executable root intentionally, place `portable.txt` beside the executable.
-
----
+On a standard non-portable PS5 installation, user data is stored at `/data/UnleashedRecomp`. The app does not run a `/data` permission preflight or choose an executable-root fallback based on a permission check. To intentionally use the executable root instead, place `portable.txt` beside the executable.
 
 ## ⚠️ Known Issues
 
@@ -120,6 +116,7 @@ On a standard non-portable PS5 installation, the user-data path is fixed at `/da
 ## 🗺️ Roadmap & TODO
 
 - [x] **Route PS5 Restart-Required Settings Through Shell Exit**: Settings confirmations now save committed values and request a shell-mediated app close instead of using the in-process soft reboot.
+- [ ] **Validate Settings Exit on PS5 Hardware**: Confirm committed settings persist, the title closes cleanly without a crash, and the settings take effect after a manual relaunch.
 - [ ] **Native PlayStation 5 Trophies**: Replace the built-in *Unleashed Recompiled* achievement system with native PlayStation 5 system trophies.
 - [ ] **Further PlayStation 5 Features**: Validate the new DualSense audio-haptics path across wired/wireless use; explore adaptive triggers, native trophies, system integration, and performance/latency optimizations beyond the conservative options already exposed.
 
@@ -171,7 +168,7 @@ Running `make` executes the entire end-to-end PlayStation 5 build pipeline autom
 4. **Embedded UI & Shader Resources (`tools/generate-resources.sh`)**:
    - Compresses and embeds UI textures, fonts, and shader caches into C++ headers via `file_to_c` (`zstd`).
 5. **PS5 SDK, PacBrew & Static RADV Driver (`tools/setup-native-dependencies.sh`, `tools/setup-pacbrew-dependencies.sh`, `tools/build-radv.sh`)**:
-   - Bootstraps `PS5_PayloadSDK` (`libc.a`, `libps5platform.a`, `libc++.a`, `libc++abi.a`, `libunwind.a`) and PacBrew static libraries (`libSDL2.a`, `libzstd.a`, `libfreetype.a`, `libiconv.a`).
+   - Bootstraps `PS5_PayloadSDK` (`libc.a`, `libps5platform.a`, `libc++.a`, `libc++abi.a`, `libunwind.a`) and PacBrew static libraries, including SDL2, zstd, freetype, and iconv.
    - Builds `PS5_Mesa`'s `libvulkan_radeon.ps5.a` (`-Dradv-winsys=ps5`) using the pre-generated OpenCL SPIR-V cache in `tooling/radv/clc-cache.tar.xz`.
 6. **Cross-Compile, Link & FSELF Sign (`tools/build.sh` + `tools/radv-link.sh`)**:
    - Cross-compiles all C/C++ sources for `x86_64-sie-ps5` (`-msse4.1 -mssse3 -mcx16 -femulated-tls`), links with `libvulkan_radeon.ps5.a` and `ps5-emutls-cxa.o`, and signs the final PS5 FSELF executable (`pkg/PPSA99902/eboot.bin`).
@@ -273,7 +270,7 @@ Restart-required settings use a full PS5 title close rather than rebuilding the 
 
 | Command | Description |
 | :--- | :--- |
-| `make` | Full automatic build: runs the ATRAC9-gain test, prepares `sce_sys/` assets, builds host tools, recompiles XEX & shaders from `ressources/`, builds RADV & SDK dependencies, compiles PS5 sources, and signs `pkg/PPSA99902/eboot.bin`. |
+| `make` | Full automatic build (default title ID `PPSA99902`): runs the ATRAC9-gain test, prepares `sce_sys/` assets, builds host tools, recompiles XEX & shaders from `ressources/`, builds RADV/SDK/PacBrew dependencies, then signs `pkg/PPSA99902/eboot.bin`. |
 | `make assets` | Converts `sce_sys/pic0.png` & `sce_sys/pic1.png` to 4K `BC7_UNORM` DX10 DDS (`pic0.dds` & `pic1.dds`), encodes editable audio with the upstream `wav_to_at9` converter or copies `sce_sys/snd0.source.at9` as fallback, and validates `sce_sys/`. |
 | `make audio-test` | Checks synthetic WAV-to-AT9 level and exercises the asset pipeline’s editable-source preference and byte-for-byte `.source.at9` fallback. |
 | `make tools` | Builds host recompiler and asset tools (`XenonRecomp`, `XenosRecomp`, `x_decompress`, `file_to_c`, `png_to_bc7_dds`, `wav_to_at9`, `ps5-native-tool`) into `tools/bin/`. |

@@ -49,6 +49,26 @@ restore_sdk_permissions() {
 
 restore_sdk_permissions
 if ! $skip_sdk && [[ ! -f $sdk/.ps5-sdk-revision || $(<"$sdk/.ps5-sdk-revision") != "$sdk_revision" ]]; then
+    llvm_config="${LLVM_CONFIG:-}"
+    if [[ -z "$llvm_config" ]]; then
+        for candidate in llvm-config-22 llvm-config-21 llvm-config-20 llvm-config-19 \
+            llvm-config-18 llvm-config-17 llvm-config-16 llvm-config-15 llvm-config; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+                llvm_config="$(command -v "$candidate")"
+                break
+            fi
+        done
+    fi
+    if [[ -z "$llvm_config" ]] || ! command -v "$llvm_config" >/dev/null 2>&1; then
+        echo "ERROR: building the pinned PS5 SDK requires llvm-config (LLVM 15 or newer) and its matching clang; install LLVM or provide LLVM_CONFIG." >&2
+        exit 2
+    fi
+    if ! llvm_bindir="$("$llvm_config" --bindir 2>/dev/null)" || [[ ! -x "$llvm_bindir/clang" ]]; then
+        echo "ERROR: LLVM_CONFIG='$llvm_config' does not point to an LLVM installation with an executable clang in its bindir." >&2
+        exit 2
+    fi
+    export LLVM_CONFIG="$llvm_config"
+
     sdk_fork="${PS5_PAYLOAD_SDK_FORK:-}"
     if [[ -z "$sdk_fork" ]]; then
         if [[ -d "$root/../PS5_PayloadSDK/.git" ]]; then
